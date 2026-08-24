@@ -1,0 +1,61 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\app\Main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\app\Application.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\roui\core\UIElement.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\roui\controls\Text.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\roui\controls\Panel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\roui\controls\Button.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\roui\controls\Card.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\roui\layout\StackPanel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\features\dashboard\DashboardPage.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\roui\window\Window.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\roui\rendering\Renderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\system\SystemInfo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\system\SystemAnalyzer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\system\TemporaryFilesScanner.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\system\TemporaryFilesCleaner.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\junio\OneDrive\Documentos\optimizer\src\system\StartupManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\junio\OneDrive\Documentos\optimizer\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{D63EEDD5-FC3E-32BF-8B66-8E3077FA1ABB}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
