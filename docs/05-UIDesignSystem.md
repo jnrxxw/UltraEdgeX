@@ -1,12 +1,12 @@
 # UI Design System
 
-| Projeto | Real Optimizer |
+| Projeto | UltraEdgeX (UeX) |
 |----------|----------------|
 | Documento | UI Design System |
-| Versão | 1.0 |
+| Versão | 1.1 |
 | Status | Draft |
 | Autor | Junior |
-| Última atualização | Julho/2026 |
+| Última atualização | Outubro/2026 |
 
 ---
 
@@ -30,11 +30,9 @@ Toda informação importante deve ser visível.
 
 ---
 
-# 2. Grid
+# 2. Grid e medidas
 
-O software utilizará um grid consistente.
-
-Espaçamentos serão múltiplos de 8.
+O software utiliza um grid consistente, com espaçamentos preferencialmente múltiplos de 8.
 
 Exemplos
 
@@ -50,59 +48,63 @@ Exemplos
 
 64 px
 
+Medidas fixas do layout:
+
+| Elemento | Valor |
+|----------|-------|
+| Barra lateral | 232 px de largura |
+| Margem lateral das páginas | 40 px |
+| Tamanho mínimo da área de conteúdo | 1180×700 |
+
+Alguns valores internos (linhas de lista com 56 a 68 px, paddings de 22 e 26 px) não são múltiplos de 8; foram ajustados para encaixar o conteúdo. Novos componentes devem preferir múltiplos de 8.
+
 ---
 
 # 3. Bordas
 
-Radius padrão
+Raios usados no app:
 
-10 px
-
-Cards
-
-12 px
-
-Botões
-
-10 px
-
-Inputs
-
-10 px
+| Elemento | Raio |
+|----------|------|
+| Cards, painéis principais e caixas de diálogo | 16 px |
+| Menus (escolha de disco) | 14 px |
+| Áreas internas de listas | 12 px |
+| Linhas de aviso e itens de menu | 10 px |
+| Selos (Seguro/Atenção) e interruptor | totalmente arredondados |
 
 ---
 
 # 4. Cards
 
-Todos os cards deverão possuir:
+O card de métrica (`Card`) mostra:
 
 Título
 
+Valor em destaque
+
 Descrição
 
-Ícone
+Barra de progresso
 
-Estado
+Opcionalmente, uma **seta de seleção** no canto superior direito, que abre um menu (por exemplo, para escolher o disco). A seta só aparece quando há o que escolher.
 
-Hover
-
-Padding interno consistente
+Padding interno consistente (22 px).
 
 ---
 
 # 5. Botões
 
-Tipos
+Estilos existentes
 
-Primary
+Primary (preenchido na cor de destaque)
 
-Secondary
+Secondary (contorno)
 
-Ghost
+Nav (item da barra lateral)
 
-Danger
+Segment (opção de um seletor segmentado, como Escuro/Claro)
 
-Estados
+Estados existentes
 
 Normal
 
@@ -112,13 +114,15 @@ Pressed
 
 Disabled
 
-Loading
+Enquanto uma ação está em andamento, o botão muda o texto (por exemplo, "Analisando…", "Aplicando…") e fica desativado.
+
+*Previstos:* Ghost, Danger e um estado Loading próprio.
 
 ---
 
 # 6. Inputs
 
-Todos os campos deverão apresentar:
+Ainda não existem campos de texto. Quando forem necessários, devem ter:
 
 Label
 
@@ -134,67 +138,89 @@ Mensagem de erro
 
 Sempre fixa.
 
-Itens organizados verticalmente.
+Itens organizados verticalmente:
 
-Ícones obrigatórios.
+Painel
+
+Limpeza
+
+Inicialização
+
+Serviços
+
+Configurações (com o selo "Em breve")
 
 Texto curto.
 
 Indicador de página ativa.
 
----
-
-# 8. Header
-
-Exibe:
-
-Título
-
-Health Score
-
-Botão Analyze
-
-Botão Optimize
-
-Perfil
-
-Configurações
+No rodapé, o bloco "Este computador" mostra o nome do computador e o sistema.
 
 ---
 
-# 9. Dashboard
+# 8. Cabeçalho das páginas
 
-O Dashboard será a tela principal.
+Padrão de toda página:
+
+Título (28 px, Bold)
+
+Subtítulo (14 px)
+
+Ação principal à direita (por exemplo, "Analisar sistema" no Painel e "Atualizar" em Inicialização)
+
+O seletor de tema (Escuro / Claro) fica no canto superior direito.
+
+---
+
+# 9. Páginas
+
+## Painel
+
+O Painel é a tela principal.
 
 Elementos
 
-Health Score
+Cards de CPU, memória e disco (o de disco com seta de escolha)
 
-Radar Chart
+Health Score (anel) e alertas com atalho para a página que resolve
 
-Quick Actions
+Informações do sistema em duas colunas (10 itens)
 
-Resumo do Hardware
+Aplicativos de inicialização ativos, com atalho para a página
 
-Notificações
+## Páginas de lista (Limpeza, Inicialização e Serviços)
 
-Última análise
+Padrão
+
+Cabeçalho (título, subtítulo e ação)
+
+Linha de status
+
+Lista dentro de uma superfície, com rolagem
+
+Em cada linha: interruptor ou caixa de seleção, nome, descrição, selo de nível (Seguro ou Atenção) e estado
+
+Rodapé com resumo ("Nenhuma alteração pendente") e o botão de aplicar
+
+Regra: a lista só muda algo depois de **Aplicar alterações** e de uma confirmação.
 
 ---
 
 # 10. Gráficos
 
-Tipos previstos
+Existentes
+
+Circular (anel do Health Score)
+
+Barra (progresso)
+
+Previstos
 
 Radar
 
 Linha
 
-Barra
-
-Circular
-
-Todos deverão utilizar a paleta oficial.
+Todos devem utilizar a paleta oficial.
 
 Nunca utilizar excesso de cores.
 
@@ -202,11 +228,13 @@ Nunca utilizar excesso de cores.
 
 # 11. Badges
 
-Tipos
+Existentes
 
-Success
+Seguro (verde suave)
 
-Warning
+Atenção (amarelo suave)
+
+Previstos
 
 Error
 
@@ -216,25 +244,23 @@ Info
 
 # 12. Tooltips
 
-Todo botão importante deverá possuir Tooltip.
-
-A linguagem deverá ser simples.
+Ainda não existem. Quando forem criados, todo botão importante deverá possuir um tooltip em linguagem simples.
 
 ---
 
-# 13. Dialogs
+# 13. Dialogs e menus
 
-Tipos
+## ConfirmDialog
 
-Confirmação
+Confirmação feita pelo componente `ConfirmDialog` do ROUI: escurece a janela, mostra um cartão com o que será afetado e bloqueia o resto da tela. Esc cancela; o Enter não confirma ações destrutivas.
 
-Aviso
-
-Erro
-
-Sucesso
+Aceita até 16 itens, até 3 avisos (informação ou atenção) e uma linha de total opcional.
 
 Nenhuma ação crítica será executada sem confirmação.
+
+## DrivePicker
+
+Menu pequeno, ancorado abaixo da seta do card. Não escurece a janela. Fecha ao escolher, ao clicar fora, com Esc ou ao trocar de página. Aceita setas do teclado e Enter. Mostra até 8 itens, cada um com título, detalhe e barra de uso.
 
 ---
 
@@ -246,6 +272,8 @@ Mesmo tamanho base.
 
 Mesmo alinhamento.
 
+Hoje a interface quase não usa ícones; as marcas (check e seta) são desenhadas com linhas simples no próprio controle.
+
 ---
 
 # 15. Animações
@@ -256,15 +284,15 @@ Transições suaves.
 
 Jamais prejudicar desempenho.
 
+Hoje não há animações.
+
 ---
 
 # 16. Responsividade
 
-A interface deverá funcionar corretamente em diferentes resoluções.
+A interface funciona a partir de 1180×700 de área de conteúdo, e o layout é recalculado ao redimensionar.
 
-Escala mínima suportada:
-
-1366x768
+Textos longos são encurtados com "…" conforme a largura disponível (por exemplo, as informações do sistema no Painel).
 
 Escala ideal:
 
@@ -274,21 +302,23 @@ Escala ideal:
 
 # 17. Estados
 
-Todos os componentes deverão possuir:
+Estados implementados
 
 Normal
 
 Hover
 
-Focused
-
 Pressed
 
 Disabled
 
-Loading
+Success (verde) e aviso (amarelo), por cores semânticas
 
-Success
+Estados previstos
+
+Focused
+
+Loading (como estado do componente)
 
 Error
 
@@ -304,9 +334,67 @@ Textos legíveis.
 
 Navegação intuitiva.
 
+O teclado funciona em caixas de diálogo e menus (Esc, setas, Enter). Navegação completa por teclado em todas as telas é um objetivo futuro.
+
 ---
 
-# 19. Consistência
+# 19. Temas
+
+A aplicação possui dois temas, **escuro** e **claro**, definidos em `roui/core/Theme.cpp`.
+
+Nenhum componente deve usar cor fixa. As cores vêm da paleta do tema atual (`Theme::Current()`) ou de um `ColorRole` (no caso de textos), para que a troca de tema funcione sem reconstruir a interface.
+
+A barra de título da janela também acompanha o tema.
+
+| Token | Escuro | Claro | Uso |
+|-------|--------|-------|-----|
+| background | `#0A0C0D` | `#F4F7F8` | fundo da aplicação |
+| sidebar | `#0D1012` | `#FFFFFF` | barra lateral |
+| surface | `#101517` | `#FFFFFF` | cards e listas |
+| surfaceInset | `#0C1113` | `#F7F9FA` | áreas internas |
+| border | `#1A2327` | `#E3E8EA` | bordas |
+| outline | `#2A3A3E` | `#CBD5D9` | contornos de botões |
+| divider | `#182024` | `#EDF1F2` | divisores |
+| hover | `#12181A` | `#F1F4F5` | item sob o mouse |
+| textPrimary | `#E6EAEC` | `#14181A` | títulos e valores |
+| textSecondary | `#9AA6AB` | `#5B676C` | descrições |
+| textMuted | `#7D8A8F` | `#66737A` | informações discretas |
+| accent (preenchimentos) | `#AC00FF` | `#AC00FF` | botões, anel, barras |
+| accentText (textos) | `#C766FF` | `#AC00FF` | textos e números em destaque |
+| accentSoft | `#1F1030` | `#F1E3FF` | fundo suave do destaque |
+| onAccent | `#FFFFFF` | `#FFFFFF` | texto sobre o accent |
+| track | `#1B2427` | `#E6ECEE` | trilho de barras e anel |
+| success (nível Seguro) | `#4ADE80` | `#15803D` | texto de sucesso |
+| successSoft | `#10281A` | `#DCFCE7` | fundo do selo Seguro |
+| warning (nível Atenção) | `#FBBF24` | `#A16207` | texto de aviso |
+| warningSoft | `#2C220A` | `#FEF3C7` | fundo do selo Atenção |
+
+---
+
+# 20. Inventário de componentes (ROUI)
+
+| Componente | Função |
+|------------|--------|
+| `Window` | janela, loop de mensagens, teclado |
+| `Renderer` | desenho com Direct2D e DirectWrite |
+| `UIElement` | base de todo elemento (posição, visibilidade, mouse) |
+| `Panel` | contêiner; um filho pode ser modal |
+| `SurfacePanel` | superfície com cantos arredondados |
+| `Text` | texto com cor semântica |
+| `Button` | Primary, Secondary, Nav e Segment |
+| `Checkbox` | caixa de seleção ou interruptor (Switch) |
+| `Card` | métrica com barra de progresso e seta opcional |
+| `ProgressRing` | anel de progresso (Health Score) |
+| `ScrollPanel` | lista com rolagem |
+| `ConfirmDialog` | confirmação modal |
+| `DrivePicker` | menu de escolha de disco |
+| `ImageBox` | imagem |
+| `StackPanel` | layout em pilha |
+| `UiDispatcher` | entrega resultados de threads de trabalho para a interface |
+
+---
+
+# 21. Consistência
 
 Todo componente novo deverá seguir este documento.
 

@@ -22,6 +22,21 @@ namespace real_optimizer::roui
                 1.0F
             };
         }
+
+        // Mistura duas cores. amount = 0 retorna "from", 1 retorna "to".
+        static constexpr Color Mix(
+            const Color& from,
+            const Color& to,
+            float amount
+        ) noexcept
+        {
+            return {
+                from.red + (to.red - from.red) * amount,
+                from.green + (to.green - from.green) * amount,
+                from.blue + (to.blue - from.blue) * amount,
+                from.alpha + (to.alpha - from.alpha) * amount
+            };
+        }
     };
 
     enum class FontWeight
@@ -43,5 +58,20 @@ namespace real_optimizer::roui
         Top,
         Center,
         Bottom
+    };
+
+    // Papel semântico de uma cor de texto.
+    // Resolvido em tempo de renderização pelo tema atual,
+    // então trocar o tema atualiza tudo sem reconstruir a UI.
+    enum class ColorRole
+    {
+        Custom,
+        Primary,
+        Secondary,
+        Muted,
+        Accent,
+        OnAccent,
+        Success,
+        Warning
     };
 }

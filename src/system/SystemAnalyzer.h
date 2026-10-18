@@ -12,6 +12,14 @@ namespace real_optimizer::system
         Critical
     };
 
+    // O que a interface pode oferecer para resolver o problema.
+    enum class IssueAction
+    {
+        None,
+        OpenCleaner, // abrir a página de Limpeza
+        OpenServices // abrir a página de Serviços
+    };
+
     struct AnalysisIssue
     {
         std::wstring title;
@@ -21,6 +29,8 @@ namespace real_optimizer::system
             IssueSeverity::Info;
 
         int scorePenalty = 0;
+
+        IssueAction action = IssueAction::None;
     };
 
     struct AnalysisResult

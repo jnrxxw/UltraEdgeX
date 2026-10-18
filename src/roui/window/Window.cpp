@@ -1,6 +1,9 @@
 #include "roui/window/Window.h"
 
+#include "resources/Resource.h"
+
 #include <cstdlib>
+#include <dwmapi.h>
 #include <windowsx.h>
 
 namespace real_optimizer::roui
@@ -84,6 +87,25 @@ namespace real_optimizer::roui
             return false;
         }
 
+        HICON appIcon = LoadIconW(
+            instance_,
+            MAKEINTRESOURCEW(IDI_APP_ICON));
+
+        if (appIcon != nullptr)
+        {
+            SendMessageW(
+                handle_,
+                WM_SETICON,
+                ICON_BIG,
+                reinterpret_cast<LPARAM>(appIcon));
+
+            SendMessageW(
+                handle_,
+                WM_SETICON,
+                ICON_SMALL,
+                reinterpret_cast<LPARAM>(appIcon));
+        }
+
         if (!renderer_.Initialize(handle_))
         {
             DestroyWindow(handle_);
@@ -97,7 +119,9 @@ namespace real_optimizer::roui
                               static_cast<float>(width_),
                               static_cast<float>(height_)});
 
-        if (!dashboardPage_.Initialize(rootPanel_))
+        dispatcher_.Attach(handle_);
+
+        if (!shell_.Initialize(rootPanel_, dispatcher_))
         {
             renderer_.Shutdown();
 
@@ -106,6 +130,13 @@ namespace real_optimizer::roui
 
             return false;
         }
+
+        ApplyTitleBarTheme();
+
+        // Posiciona os elementos para o tamanho inicial.
+        shell_.Resize(
+            static_cast<float>(width_),
+            static_cast<float>(height_));
 
         SetTimer(
             handle_,
@@ -170,6 +201,65 @@ namespace real_optimizer::roui
         return handle_ != nullptr;
     }
 
+    void Window::ApplyTitleBarTheme()
+    {
+        if (handle_ == nullptr)
+        {
+            return;
+        }
+
+        const ThemeMode mode = Theme::GetMode();
+
+        if (
+            titleBarApplied_ &&
+            mode == appliedTitleBarMode_)
+        {
+            return;
+        }
+
+        titleBarApplied_ = true;
+        appliedTitleBarMode_ = mode;
+
+        const Palette &palette = Theme::Current();
+
+        const auto toColorRef =
+            [](const Color &color) -> COLORREF
+        {
+            return RGB(
+                static_cast<BYTE>(color.red * 255.0F + 0.5F),
+                static_cast<BYTE>(color.green * 255.0F + 0.5F),
+                static_cast<BYTE>(color.blue * 255.0F + 0.5F));
+        };
+
+        // Valores do DWMWINDOWATTRIBUTE (usados direto para
+        // não depender da versão do Windows SDK).
+        constexpr DWORD ImmersiveDarkMode = 20;
+        constexpr DWORD BorderColor = 34;
+        constexpr DWORD CaptionColor = 35;
+        constexpr DWORD TextColor = 36;
+
+        const BOOL useDark =
+            mode == ThemeMode::Dark ? TRUE : FALSE;
+
+        const COLORREF caption = toColorRef(palette.sidebar);
+        const COLORREF text = toColorRef(palette.textPrimary);
+        const COLORREF border = toColorRef(palette.border);
+
+        // Windows 10 (2004+) e 11: botões e texto claro/escuro.
+        DwmSetWindowAttribute(
+            handle_, ImmersiveDarkMode, &useDark, sizeof(useDark));
+
+        // Windows 11: cor própria da barra de título.
+        DwmSetWindowAttribute(
+            handle_, CaptionColor, &caption, sizeof(caption));
+
+        DwmSetWindowAttribute(
+            handle_, TextColor, &text, sizeof(text));
+
+        DwmSetWindowAttribute(
+            handle_, BorderColor, &border, sizeof(border));
+    }
+
     bool Window::RegisterWindowClass()
     {
         WNDCLASSEXW windowClass{};
@@ -186,6 +276,16 @@ namespace real_optimizer::roui
 
         windowClass.hInstance =
             instance_;
+
+        windowClass.hIcon =
+            LoadIconW(
+                instance_,
+                MAKEINTRESOURCEW(IDI_APP_ICON));
+
+        windowClass.hIconSm =
+            LoadIconW(
+                instance_,
+                MAKEINTRESOURCEW(IDI_APP_ICON));
 
         windowClass.hCursor =
             LoadCursorW(
@@ -279,6 +379,11 @@ namespace real_optimizer::roui
             KillTimer(
                 handle_,
                 1);
+
+            // Para de receber tarefas e espera as que estão rodando.
+            dispatcher_.Detach();
+            shell_.Shutdown();
+
             renderer_.Shutdown();
 
             handle_ = nullptr;
@@ -296,6 +401,11 @@ namespace real_optimizer::roui
                 static_cast<UINT>(
                     HIWORD(lParam));
 
+            if (width == 0 || height == 0)
+            {
+                return 0;
+            }
+
             renderer_.Resize(
                 width,
                 height);
@@ -304,7 +414,7 @@ namespace real_optimizer::roui
                 static_cast<float>(width),
                 static_cast<float>(height));
 
-            dashboardPage_.Resize(
+            shell_.Resize(
                 static_cast<float>(width),
                 static_cast<float>(height));
 
@@ -320,13 +430,64 @@ namespace real_optimizer::roui
         {
             if (wParam == 1)
             {
-                dashboardPage_.RefreshRealtimeStats();
+                shell_.RefreshRealtimeStats();
 
                 InvalidateRect(
                     handle_,
                     nullptr,
                     FALSE);
             }
+
+            return 0;
+        }
+
+        case UiDispatcher::Message:
+            // Código agendado por threads de trabalho.
+            UiDispatcher::Execute(lParam);
+
+            InvalidateRect(
+                handle_,
+                nullptr,
+                FALSE);
+
+            return 0;
+
+        case WM_KEYDOWN:
+            if (shell_.OnKeyDown(static_cast<unsigned int>(wParam)))
+            {
+                InvalidateRect(
+                    handle_,
+                    nullptr,
+                    FALSE);
+
+                return 0;
+            }
+
+            return DefWindowProcW(
+                handle_,
+                message,
+                wParam,
+                lParam);
+
+        case WM_GETMINMAXINFO:
+        {
+            // Tamanho mínimo da área de conteúdo,
+            // convertido para o tamanho total da janela.
+            RECT minimum{0, 0, 1180, 700};
+
+            AdjustWindowRect(
+                &minimum,
+                WS_OVERLAPPEDWINDOW,
+                FALSE);
+
+            auto *info =
+                reinterpret_cast<MINMAXINFO *>(lParam);
+
+            info->ptMinTrackSize.x =
+                minimum.right - minimum.left;
+
+            info->ptMinTrackSize.y =
+                minimum.bottom - minimum.top;
 
             return 0;
         }
@@ -358,6 +519,30 @@ namespace real_optimizer::roui
 
             TrackMouseEvent(
                 &trackingEvent);
+
+            InvalidateRect(
+                handle_,
+                nullptr,
+                FALSE);
+
+            return 0;
+        }
+
+        case WM_MOUSEWHEEL:
+        {
+            // A posição vem em coordenadas da tela.
+            POINT cursor{
+                GET_X_LPARAM(lParam),
+                GET_Y_LPARAM(lParam)};
+
+            ScreenToClient(handle_, &cursor);
+
+            rootPanel_.OnMouseWheel(
+                Point{
+                    static_cast<float>(cursor.x),
+                    static_cast<float>(cursor.y)},
+                static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) /
+                    static_cast<float>(WHEEL_DELTA));
 
             InvalidateRect(
                 handle_,
@@ -410,6 +595,9 @@ namespace real_optimizer::roui
 
             rootPanel_.OnMouseUp(
                 mousePosition);
+
+            // O clique pode ter trocado o tema.
+            ApplyTitleBarTheme();
 
             InvalidateRect(
                 handle_,

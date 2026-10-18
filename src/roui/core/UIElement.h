@@ -49,6 +49,14 @@ namespace real_optimizer::roui
         virtual void OnMouseDown(const Point& point);
         virtual void OnMouseUp(const Point& point);
 
+        // notches > 0: roda para cima (afasta do usuário);
+        // 1.0 = um "clique" da roda.
+        virtual void OnMouseWheel(const Point& point, float notches)
+        {
+            static_cast<void>(point);
+            static_cast<void>(notches);
+        }
+
     protected:
         virtual void OnRender(
             rendering::Renderer& renderer

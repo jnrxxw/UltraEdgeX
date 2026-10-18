@@ -3,9 +3,11 @@
 #include <string>
 #include <windows.h>
 
-#include "features/dashboard/DashboardPage.h"
+#include "features/shell/MainShell.h"
 #include "roui/controls/Panel.h"
+#include "roui/core/Theme.h"
 #include "roui/rendering/Renderer.h"
+#include "roui/window/UiDispatcher.h"
 
 namespace real_optimizer::roui
 {
@@ -34,6 +36,9 @@ namespace real_optimizer::roui
         [[nodiscard]] bool IsCreated() const noexcept;
 
     private:
+        // Pinta a barra de título conforme o tema atual.
+        void ApplyTitleBarTheme();
+
         static LRESULT CALLBACK WindowProcedure(
             HWND windowHandle,
             UINT message,
@@ -54,12 +59,16 @@ namespace real_optimizer::roui
         std::wstring className_ =
             L"RealOptimizerWindowClass";
 
+        bool titleBarApplied_ = false;
+        ThemeMode appliedTitleBarMode_ = ThemeMode::Dark;
+
         int width_ = 0;
         int height_ = 0;
 
         rendering::Renderer renderer_;
         Panel rootPanel_;
 
-        features::dashboard::DashboardPage dashboardPage_;
+        UiDispatcher dispatcher_;
+        features::shell::MainShell shell_;
     };
 }

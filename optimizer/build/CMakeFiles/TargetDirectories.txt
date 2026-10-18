@@ -1,3 +1,0 @@
-C:/Users/junio/OneDrive/Documentos/optimizer/build/CMakeFiles/UltraEdgeX.dir
-C:/Users/junio/OneDrive/Documentos/optimizer/build/CMakeFiles/ALL_BUILD.dir
-C:/Users/junio/OneDrive/Documentos/optimizer/build/CMakeFiles/ZERO_CHECK.dir

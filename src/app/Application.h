@@ -30,6 +30,7 @@ namespace real_optimizer::app
 
         void Shutdown();
 
+        bool comInitialized_ = false;
         real_optimizer::roui::Window mainWindow_;
     };
 }

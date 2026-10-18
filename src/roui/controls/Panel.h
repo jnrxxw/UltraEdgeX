@@ -19,12 +19,18 @@ namespace real_optimizer::roui
 
         void ClearChildren() noexcept;
 
+        // Quando o filho modal está visível, só ele recebe o mouse
+        // (os outros elementos ficam "congelados" por baixo).
+        // Usado por caixas de diálogo.
+        void SetModalChild(UIElement* child) noexcept;
+
         [[nodiscard]] std::size_t GetChildCount() const noexcept;
 
         void OnMouseMove(const Point& point) override;
         void OnMouseLeave() override;
         void OnMouseDown(const Point& point) override;
         void OnMouseUp(const Point& point) override;
+        void OnMouseWheel(const Point& point, float notches) override;
 
     protected:
         void OnRender(
@@ -40,6 +46,12 @@ namespace real_optimizer::roui
         >& GetChildren() const noexcept;
 
     private:
+        [[nodiscard]] bool IsModalActive() const noexcept;
+        void ResetHoverOfOtherChildren();
+
         std::vector<std::unique_ptr<UIElement>> children_;
+
+        UIElement* modalChild_ = nullptr;
+        bool hoverResetForModal_ = false;
     };
 }

@@ -17,6 +17,7 @@ namespace real_optimizer::roui
         void SetFontSize(float fontSize) noexcept;
         void SetFontWeight(FontWeight fontWeight) noexcept;
         void SetColor(const Color& color) noexcept;
+        void SetColorRole(ColorRole role) noexcept;
 
         void SetHorizontalAlignment(
             HorizontalAlignment alignment
@@ -41,6 +42,7 @@ namespace real_optimizer::roui
         float fontSize_ = 16.0F;
         FontWeight fontWeight_ = FontWeight::Normal;
         Color color_ = Color::FromRgb(255, 255, 255);
+        ColorRole colorRole_ = ColorRole::Custom;
 
         HorizontalAlignment horizontalAlignment_ =
             HorizontalAlignment::Left;

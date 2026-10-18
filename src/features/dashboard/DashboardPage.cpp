@@ -1,19 +1,31 @@
 #include "features/dashboard/DashboardPage.h"
-#include <Windows.h>
+
+#include <windows.h>
 #include <shellapi.h>
+
 #include "roui/controls/Button.h"
 #include "roui/controls/Card.h"
+#include "roui/controls/DrivePicker.h"
+#include "roui/controls/ProgressRing.h"
+#include "roui/controls/ScrollPanel.h"
+#include "roui/controls/SurfacePanel.h"
 #include "roui/controls/Text.h"
-#include "roui/layout/StackPanel.h"
+#include "roui/core/Theme.h"
+#include "roui/window/UiDispatcher.h"
 
 #include "system/SystemAnalyzer.h"
+#include "system/StartupCatalog.h"
 #include "system/SystemInfo.h"
-#include "system/TemporaryFilesCleaner.h"
 #include "system/StartupManager.h"
-#include <vector>
+
+#include <algorithm>
+#include <cstdint>
+#include <cwctype>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace real_optimizer::roui;
 
@@ -21,6 +33,31 @@ namespace
 {
     constexpr std::uint64_t Gigabyte =
         1024ULL * 1024ULL * 1024ULL;
+
+    // Medidas do layout (px).
+    // Espaço reservado à direita do cabeçalho (seletor de tema).
+    constexpr float HeaderActionReserve = 196.0F;
+    constexpr float SectionGap = 20.0F;
+    constexpr float HeaderHeight = 52.0F;
+    constexpr float MetricCardHeight = 128.0F;
+    constexpr float MiddleRowHeight = 352.0F;
+
+    // Área de alertas do cartão de saúde: cada alerta ocupa 52 px
+    // (44 do bloco + 8 de espaço) e a área mostra 3 por vez.
+    constexpr float IssueRowHeight = 52.0F;
+    constexpr float IssueViewportTop = 184.0F;
+    constexpr float IssueViewportHeight = 148.0F;
+    constexpr float IssueScrollbarGutter = 12.0F;
+    constexpr float StartupRowHeight = 38.0F;
+    constexpr std::size_t MaxVisibleStartupApps = 5;
+
+    // Informações do sistema: duas colunas.
+    constexpr float InfoColumnGap = 24.0F;
+    constexpr float InfoRowHeight = 56.0F;
+
+    // Largura média de um caractere (fonte 13 SemiBold), para decidir
+    // onde encurtar um texto longo.
+    constexpr float InfoValueCharWidth = 7.0F;
 
     std::wstring FormatGigabytes(
         std::uint64_t bytes)
@@ -36,176 +73,446 @@ namespace
         return std::to_wstring(rounded) +
                L" GB";
     }
+
+    void RemoveAll(
+        std::wstring &text,
+        const std::wstring &token)
+    {
+        std::size_t position = 0;
+
+        while ((position = text.find(token)) !=
+               std::wstring::npos)
+        {
+            text.erase(position, token.size());
+        }
+    }
+
+    // "Intel(R) Core(TM) i5-9600KF CPU @ 3.70GHz"
+    // vira "Intel Core i5-9600KF @ 3.70GHz".
+    std::wstring SimplifyProcessorName(
+        std::wstring name)
+    {
+        RemoveAll(name, L"(R)");
+        RemoveAll(name, L"(TM)");
+        RemoveAll(name, L" CPU");
+
+        RemoveAll(name, L" Processor");
+        RemoveAll(name, L" with Radeon Graphics");
+
+        // "AMD Ryzen 7 5700X 8-Core" -> "AMD Ryzen 7 5700X"
+        std::size_t core = name.find(L"-Core");
+
+        if (core != std::wstring::npos)
+        {
+            std::size_t start = core;
+
+            while (start > 0 && std::iswdigit(name[start - 1]))
+            {
+                --start;
+            }
+
+            if (start > 0 && name[start - 1] == L' ')
+            {
+                --start;
+            }
+
+            name.erase(start, core + 5 - start);
+        }
+
+        // "Intel Core i5-11400 @ 2.60GHz" -> "Intel Core i5-11400"
+        const std::size_t at = name.find(L" @ ");
+
+        if (at != std::wstring::npos)
+        {
+            name.erase(at);
+        }
+
+        // "13th Gen Intel Core i7" -> "Intel Core i7"
+        const std::size_t gen = name.find(L" Gen ");
+
+        if (
+            gen != std::wstring::npos &&
+            gen <= 6 &&
+            !name.empty() &&
+            std::iswdigit(name.front()))
+        {
+            name.erase(0, gen + 5);
+        }
+
+        std::size_t position = 0;
+
+        while ((position = name.find(L"  ")) !=
+               std::wstring::npos)
+        {
+            name.erase(position, 1);
+        }
+
+        while (!name.empty() && name.back() == L' ')
+        {
+            name.pop_back();
+        }
+
+        return name;
+    }
+
+    constexpr const wchar_t *Unknown = L"Não identificado";
+
+    std::wstring JoinParts(
+        const std::wstring &first,
+        const std::wstring &second)
+    {
+        if (first.empty())
+        {
+            return second;
+        }
+
+        return second.empty() ? first : first + L" · " + second;
+    }
+
+    std::wstring FormatUptime(std::uint64_t seconds)
+    {
+        const std::uint64_t minutes = seconds / 60;
+        const std::uint64_t hours = minutes / 60;
+        const std::uint64_t days = hours / 24;
+
+        if (days > 0)
+        {
+            return std::to_wstring(days) +
+                   (days == 1 ? L" dia " : L" dias ") +
+                   std::to_wstring(hours % 24) + L" h";
+        }
+
+        if (hours > 0)
+        {
+            return std::to_wstring(hours) + L" h " +
+                   std::to_wstring(minutes % 60) + L" min";
+        }
+
+        return std::to_wstring(minutes == 0 ? 1 : minutes) + L" min";
+    }
+
+    std::wstring FormatGpu(const real_optimizer::system::SystemDetails &d)
+    {
+        if (d.gpuName.empty())
+        {
+            return Unknown;
+        }
+
+        std::wstring name = d.gpuName;
+
+        RemoveAll(name, L"(R)");
+        RemoveAll(name, L"(TM)");
+
+        if (name.rfind(L"NVIDIA GeForce", 0) == 0)
+        {
+            name.erase(0, 7);
+        }
+
+        // Placas integradas usam a memória do sistema: sem VRAM própria.
+        const std::wstring memory =
+            d.gpuMemoryBytes >= Gigabyte
+                ? FormatGigabytes(d.gpuMemoryBytes)
+                : std::wstring();
+
+        return JoinParts(name, memory);
+    }
+
+    std::wstring FormatDisplay(const real_optimizer::system::SystemDetails &d)
+    {
+        if (d.displayWidth == 0 || d.displayHeight == 0)
+        {
+            return Unknown;
+        }
+
+        const std::wstring resolution =
+            std::to_wstring(d.displayWidth) + L"×" +
+            std::to_wstring(d.displayHeight);
+
+        return JoinParts(
+            resolution,
+            d.displayRefreshHz > 0
+                ? std::to_wstring(d.displayRefreshHz) + L" Hz"
+                : std::wstring());
+    }
+
+    // Limpa redundâncias comuns em nomes de placa-mãe.
+    std::wstring SimplifyMotherboardName(std::wstring name)
+    {
+        RemoveAll(name, L"(R)");
+        RemoveAll(name, L"(TM)");
+
+        // Se o fabricante for duplicado no início do modelo (ex: "ASUS ROG STRIX...")
+        // ou se contiver sufixos longos desnecessários mantemos limpo.
+        std::size_t position = 0;
+        while ((position = name.find(L"  ")) != std::wstring::npos)
+        {
+            name.erase(position, 1);
+        }
+
+        while (!name.empty() && name.back() == L' ')
+        {
+            name.pop_back();
+        }
+
+        return name;
+    }
+
+    constexpr std::size_t InfoItemCount = 10;
+
+    // Mesma ordem dos rótulos em CreateSystemInformation.
+    std::array<std::wstring, InfoItemCount> BuildInfoValues(
+        const real_optimizer::system::SystemDetails &d)
+    {
+        const std::uint64_t memoryGb =
+            (d.totalMemoryBytes + Gigabyte / 2) / Gigabyte;
+
+        const std::wstring windows =
+            JoinParts(
+                d.operatingSystem.empty() ? std::wstring(L"Windows")
+                                          : d.operatingSystem,
+                d.windowsVersion);
+
+        const std::wstring bios =
+            JoinParts(d.biosVersion, d.biosDate);
+
+        const std::wstring motherboard =
+            d.motherboard.empty()
+                ? std::wstring(Unknown)
+                : SimplifyMotherboardName(d.motherboard);
+
+        return {
+            windows,
+            d.computerName,
+            SimplifyProcessorName(d.processorName),
+            FormatGpu(d),
+            std::to_wstring(memoryGb) + L" GB",
+            motherboard,
+            bios.empty() ? std::wstring(Unknown) : bios,
+            FormatDisplay(d),
+            FormatUptime(d.uptimeSeconds),
+            d.powerPlan.empty() ? std::wstring(Unknown) : d.powerPlan};
+    }
+
+    std::wstring FitText(
+        const std::wstring &text,
+        std::size_t maxChars)
+    {
+        if (text.size() <= maxChars || maxChars < 2)
+        {
+            return text;
+        }
+
+        return text.substr(0, maxChars - 1) + L"…";
+    }
+
+    void Place(
+        UIElement *element,
+        float x,
+        float y,
+        float width,
+        float height) noexcept
+    {
+        if (element != nullptr)
+        {
+            element->SetBounds({x, y, width, height});
+        }
+    }
+
+    Text *AddText(
+        Panel &parent,
+        const std::wstring &content,
+        float fontSize,
+        FontWeight weight,
+        ColorRole role,
+        HorizontalAlignment horizontal = HorizontalAlignment::Left,
+        VerticalAlignment vertical = VerticalAlignment::Center)
+    {
+        auto text = std::make_unique<Text>();
+        Text *raw = text.get();
+
+        text->SetText(content);
+        text->SetFontSize(fontSize);
+        text->SetFontWeight(weight);
+        text->SetColorRole(role);
+        text->SetHorizontalAlignment(horizontal);
+        text->SetVerticalAlignment(vertical);
+
+        parent.AddChild(std::move(text));
+
+        return raw;
+    }
+
+    SurfacePanel *AddSurface(
+        Panel &parent,
+        SurfaceRole role,
+        float cornerRadius)
+    {
+        auto surface = std::make_unique<SurfacePanel>();
+        SurfacePanel *raw = surface.get();
+
+        surface->SetRole(role);
+        surface->SetCornerRadius(cornerRadius);
+
+        parent.AddChild(std::move(surface));
+
+        return raw;
+    }
+
+    Button *AddButton(
+        Panel &parent,
+        const std::wstring &label,
+        Button::Style style)
+    {
+        auto button = std::make_unique<Button>();
+        Button *raw = button.get();
+
+        button->SetText(label);
+        button->SetStyle(style);
+
+        parent.AddChild(std::move(button));
+
+        return raw;
+    }
+
+    Card *AddCard(
+        Panel &parent,
+        const std::wstring &title)
+    {
+        auto card = std::make_unique<Card>();
+        Card *raw = card.get();
+
+        card->SetTitle(title);
+
+        parent.AddChild(std::move(card));
+
+        return raw;
+    }
 }
 
 namespace real_optimizer::features::dashboard
 {
+    DashboardPage::~DashboardPage()
+    {
+        Shutdown();
+    }
+
+    void DashboardPage::Shutdown()
+    {
+        shuttingDown_ = true;
+
+        if (worker_.joinable())
+        {
+            worker_.join();
+        }
+    }
+
+    void DashboardPage::OnShown()
+    {
+        // Discos podem ter sido conectados/removidos.
+        CloseMenus();
+        RefreshDriveList();
+
+        // Tempo ligado, plano de energia e monitor mudam com o tempo.
+        // (O Layout feito abaixo já aplica os textos novos.)
+        RefreshSystemInformation();
+
+        // A lista de inicialização pode ter mudado.
+        RefreshStartupSection();
+
+        // Depois de uma limpeza, por exemplo, os números mudam.
+        if (hasAnalysis_)
+        {
+            AnalyzeSystem();
+        }
+    }
+
     bool DashboardPage::Initialize(
+        Panel &pageRoot,
+        UiDispatcher &dispatcher,
+        std::function<void()> openCleaner,
+        std::function<void()> openServices,
+        std::function<void()> openStartup)
+    {
+        dispatcher_ = &dispatcher;
+        openCleaner_ = std::move(openCleaner);
+        openServices_ = std::move(openServices);
+        openStartup_ = std::move(openStartup);
+
+        if (
+            !CreateHeader(pageRoot) ||
+            !CreateMetrics(pageRoot) ||
+            !CreateHealthSection(pageRoot) ||
+            !CreateSystemInformation(pageRoot) ||
+            !CreateStartupSection(pageRoot))
+        {
+            return false;
+        }
+
+        // Menu de escolha de disco: último filho (desenha por cima de
+        // tudo) e modal enquanto aberto.
+        {
+            auto picker = std::make_unique<DrivePicker>();
+            drivePicker_ = picker.get();
+
+            pageRoot.AddChild(std::move(picker));
+            pageRoot.SetModalChild(drivePicker_);
+
+            drivePicker_->Hide();
+        }
+
+        diskCard_->SetOnSelectorClick(
+            [this]()
+            {
+                OpenDriveMenu();
+            });
+
+        RefreshDriveList();
+
+        return true;
+    }
+
+    //
+    // CABEÇALHO
+    //
+
+    bool DashboardPage::CreateHeader(
         Panel &rootPanel)
     {
-        auto page =
-            std::make_unique<StackPanel>();
+        titleText_ = AddText(
+            rootPanel,
+            L"Painel",
+            28.0F,
+            FontWeight::Bold,
+            ColorRole::Primary);
 
-        page->SetBounds({40.0F,
-                         40.0F,
-                         1100.0F,
-                         650.0F});
+        subtitleText_ = AddText(
+            rootPanel,
+            L"Performance & Optimization",
+            14.0F,
+            FontWeight::Normal,
+            ColorRole::Secondary);
 
-        page->SetOrientation(
-            Orientation::Vertical);
+        analyzeButton_ = AddButton(
+            rootPanel,
+            L"Analisar sistema",
+            Button::Style::Primary);
 
-        page->SetSpacing(24.0F);
-
-        pagePanel_ = page.get();
-
-        rootPanel.AddChild(
-            std::move(page));
-
-        if (!CreateHeader())
-        {
-            return false;
-        }
-
-        if (!CreateMetrics())
-        {
-            return false;
-        }
-
-        //
-        // CONTEÚDO PRINCIPAL
-        //
-
-        auto contentRow =
-            std::make_unique<StackPanel>();
-
-        contentRow->SetSize(
-            940.0F,
-            360.0F);
-
-        contentRow->SetOrientation(
-            Orientation::Horizontal);
-
-        contentRow->SetAutoSize(
-            false,
-            true);
-
-        contentRow->SetSpacing(
-            40.0F);
-
-        contentRow_ = contentRow.get();
-
-        pagePanel_->AddChild(
-            std::move(contentRow));
-
-        //
-        // SAÚDE DO SISTEMA
-        //
-
-        if (!CreateAnalysisSection())
-        {
-            return false;
-        }
-
-        //
-        // INFORMAÇÕES DO SISTEMA
-        //
-
-        if (!CreateSystemInformation())
-        {
-            return false;
-        }
-
-        //
-        // APLICATIVOS DE INICIALIZAÇÃO
-        //
-
-        if (!CreateStartupSection())
-        {
-            return false;
-        }
+        analyzeButton_->SetOnClick(
+            [this]()
+            {
+                AnalyzeSystem();
+            });
 
         return true;
     }
 
-    bool DashboardPage::CreateHeader()
+    //
+    // MÉTRICAS
+    //
+
+    bool DashboardPage::CreateMetrics(
+        Panel &rootPanel)
     {
-        if (pagePanel_ == nullptr)
-        {
-            return false;
-        }
-
-        auto header =
-            std::make_unique<StackPanel>();
-
-        header->SetSize(
-            900.0F,
-            76.0F);
-
-        header->SetOrientation(
-            Orientation::Vertical);
-
-        header->SetSpacing(6.0F);
-
-        auto title =
-            std::make_unique<Text>();
-
-        title->SetText(
-            L"UltraEdgeX");
-
-        title->SetSize(
-            900.0F,
-            42.0F);
-
-        title->SetFontSize(32.0F);
-
-        title->SetFontWeight(
-            FontWeight::Bold);
-
-        title->SetColor(
-            Color::FromRgb(
-                7,
-                242,
-                242));
-
-        header->AddChild(
-            std::move(title));
-
-        auto subtitle =
-            std::make_unique<Text>();
-
-        subtitle->SetText(
-            L"Performance & Optimization");
-
-        subtitle->SetSize(
-            900.0F,
-            26.0F);
-
-        subtitle->SetFontSize(15.0F);
-
-        subtitle->SetColor(
-            Color::FromRgb(
-                190,
-                190,
-                190));
-
-        header->AddChild(
-            std::move(subtitle));
-
-        headerPanel_ = header.get();
-
-        pagePanel_->AddChild(
-            std::move(header));
-
-        return true;
-    }
-
-    bool DashboardPage::CreateMetrics()
-    {
-        if (pagePanel_ == nullptr)
-        {
-            return false;
-        }
-
         const auto memory =
             system::SystemInfo::GetMemoryInfo();
 
@@ -217,491 +524,233 @@ namespace real_optimizer::features::dashboard
         static_cast<void>(
             system::SystemInfo::GetCpuInfo());
 
-        auto metrics =
-            std::make_unique<StackPanel>();
+        cpuCard_ = AddCard(rootPanel, L"PROCESSADOR");
+        cpuCard_->SetValue(L"--%");
+        cpuCard_->SetDescription(L"Uso da CPU");
 
-        metrics->SetSize(
-            1000.0F,
-            170.0F);
-
-        metrics->SetOrientation(
-            Orientation::Horizontal);
-
-        metrics->SetSpacing(20.0F);
-
-        //
-        // CPU
-        //
-
-        auto cpuCard =
-            std::make_unique<Card>();
-
-        cpuCard->SetTitle(
-            L"PROCESSADOR");
-
-        cpuCard->SetValue(
-            L"--%");
-
-        cpuCard->SetDescription(
-            L"Uso da CPU");
-
-        cpuCard->SetSize(
-            300.0F,
-            150.0F);
-
-        cpuCard_ = cpuCard.get();
-
-        metrics->AddChild(
-            std::move(cpuCard));
-
-        //
-        // MEMORY
-        //
-
-        auto memoryCard =
-            std::make_unique<Card>();
-
-        memoryCard->SetTitle(
-            L"MEMORIA");
-
-        memoryCard->SetValue(
-            FormatGigabytes(
-                memory.totalBytes));
-
-        memoryCard->SetDescription(
-            std::to_wstring(
-                memory.usagePercent) +
+        memoryCard_ = AddCard(rootPanel, L"MEMÓRIA");
+        memoryCard_->SetValue(
+            FormatGigabytes(memory.totalBytes));
+        memoryCard_->SetDescription(
+            std::to_wstring(memory.usagePercent) +
             L"% em uso");
+        memoryCard_->SetProgress(
+            static_cast<float>(memory.usagePercent) /
+            100.0F);
 
-        memoryCard->SetSize(
-            300.0F,
-            150.0F);
-
-        memoryCard_ =
-            memoryCard.get();
-
-        metrics->AddChild(
-            std::move(memoryCard));
-
-        //
-        // DISK
-        //
-
-        auto diskCard =
-            std::make_unique<Card>();
-
-        diskCard->SetTitle(
-            L"DISCO DO SISTEMA");
-
-        diskCard->SetValue(
-            FormatGigabytes(
-                disk.totalBytes));
-
-        diskCard->SetDescription(
-            FormatGigabytes(
-                disk.freeBytes) +
+        diskCard_ = AddCard(rootPanel, L"DISCO DO SISTEMA");
+        diskCard_->SetValue(
+            FormatGigabytes(disk.totalBytes));
+        diskCard_->SetDescription(
+            FormatGigabytes(disk.freeBytes) +
             L" disponíveis");
 
-        diskCard->SetSize(
-            300.0F,
-            150.0F);
+        if (disk.totalBytes > 0)
+        {
+            const double used =
+                static_cast<double>(
+                    disk.totalBytes - disk.freeBytes) /
+                static_cast<double>(disk.totalBytes);
 
-        diskCard_ = diskCard.get();
-
-        metrics->AddChild(
-            std::move(diskCard));
-
-        metricsPanel_ = metrics.get();
-
-        pagePanel_->AddChild(
-            std::move(metrics));
+            diskCard_->SetProgress(
+                static_cast<float>(used));
+        }
 
         return true;
     }
 
-    bool DashboardPage::CreateAnalysisSection()
+    //
+    // SAÚDE DO SISTEMA
+    //
+
+    bool DashboardPage::CreateHealthSection(
+        Panel &rootPanel)
     {
-        if (contentRow_ == nullptr)
+        healthSurface_ = AddSurface(
+            rootPanel,
+            SurfaceRole::Surface,
+            16.0F);
+
+        healthRing_ = nullptr;
+
         {
-            return false;
+            auto ring = std::make_unique<ProgressRing>();
+            healthRing_ = ring.get();
+
+            ring->SetCaption(L"de 100");
+
+            healthSurface_->AddChild(std::move(ring));
         }
-        auto analysis =
-            std::make_unique<StackPanel>();
 
-        analysis->SetSize(
-            450.0F,
-            330.0F);
-
-        analysis->SetOrientation(
-            Orientation::Vertical);
-
-        analysis->SetAutoSize(
-            false,
-            true);
-
-        analysis->SetSpacing(10.0F);
-
-        auto sectionTitle =
-            std::make_unique<Text>();
-
-        sectionTitle->SetText(
-            L"SAUDE DO SISTEMA");
-
-        sectionTitle->SetSize(
-            900.0F,
-            30.0F);
-
-        sectionTitle->SetFontSize(
-            18.0F);
-
-        sectionTitle->SetFontWeight(
-            FontWeight::SemiBold);
-
-        sectionTitle->SetColor(
-            Color::FromRgb(
-                220,
-                220,
-                220));
-
-        analysis->AddChild(
-            std::move(sectionTitle));
-
-        //
-        // HEALTH
-        //
-
-        auto healthText =
-            std::make_unique<Text>();
-
-        healthText->SetText(
-            L"Ainda não analisado");
-
-        healthText->SetSize(
-            900.0F,
-            30.0F);
-
-        healthText->SetFontSize(
-            20.0F);
-
-        healthText->SetColor(
-            Color::FromRgb(
-                7,
-                242,
-                242));
-
-        healthText_ =
-            healthText.get();
-
-        analysis->AddChild(
-            std::move(healthText));
-
-        //
-        // STATUS
-        //
-
-        auto statusText =
-            std::make_unique<Text>();
-
-        statusText->SetText(
-            L"Pronto para analisar seu sistema.");
-
-        statusText->SetSize(
-            900.0F,
-            26.0F);
-
-        statusText->SetFontSize(
-            14.0F);
-
-        statusText->SetColor(
-            Color::FromRgb(
-                170,
-                170,
-                170));
-
-        analysisStatusText_ =
-            statusText.get();
-
-        analysis->AddChild(
-            std::move(statusText));
-
-        auto issueTitle1 =
-            std::make_unique<Text>();
-
-        issueTitle1->SetText(L"");
-
-        issueTitle1->SetSize(
-            900.0F,
-            24.0F);
-
-        issueTitle1->SetFontSize(15.0F);
-
-        issueTitle1->SetFontWeight(
-            FontWeight::SemiBold);
-
-        issueTitle1->SetColor(
-            Color::FromRgb(
-                7,
-                242,
-                242));
-
-        issueTitle1_ = issueTitle1.get();
-
-        issueTitle1_->SetVisible(false);
-
-        analysis->AddChild(
-            std::move(issueTitle1));
-
-        auto issueDescription1 =
-            std::make_unique<Text>();
-
-        issueDescription1->SetText(L"");
-
-        issueDescription1->SetSize(
-            900.0F,
-            22.0F);
-
-        issueDescription1->SetFontSize(13.0F);
-
-        issueDescription1->SetColor(
-            Color::FromRgb(
-                170,
-                170,
-                170));
-
-        issueDescription1_ =
-            issueDescription1.get();
-
-        issueDescription1_->SetVisible(false);
-
-        analysis->AddChild(
-            std::move(issueDescription1));
-
-        //
-        // ISSUE 2
-        //
-
-        auto issueTitle2 =
-            std::make_unique<Text>();
-
-        issueTitle2->SetText(L"");
-
-        issueTitle2->SetSize(
-            900.0F,
-            24.0F);
-
-        issueTitle2->SetFontSize(15.0F);
-
-        issueTitle2->SetFontWeight(
-            FontWeight::SemiBold);
-
-        issueTitle2->SetColor(
-            Color::FromRgb(
-                7,
-                242,
-                242));
-
-        issueTitle2_ = issueTitle2.get();
-        issueTitle2_->SetVisible(false);
-
-        analysis->AddChild(
-            std::move(issueTitle2));
-
-        auto issueDescription2 =
-            std::make_unique<Text>();
-
-        issueDescription2->SetText(L"");
-
-        issueDescription2->SetSize(
-            900.0F,
-            22.0F);
-
-        issueDescription2->SetFontSize(13.0F);
-
-        issueDescription2->SetColor(
-            Color::FromRgb(
-                170,
-                170,
-                170));
-
-        issueDescription2_ = issueDescription2.get();
-        issueDescription2_->SetVisible(false);
-
-        analysis->AddChild(
-            std::move(issueDescription2));
-
-        //
-        // ISSUE 3
-        //
-
-        auto issueTitle3 =
-            std::make_unique<Text>();
-
-        issueTitle3->SetText(L"");
-
-        issueTitle3->SetSize(
-            900.0F,
-            24.0F);
-
-        issueTitle3->SetFontSize(15.0F);
-
-        issueTitle3->SetFontWeight(
-            FontWeight::SemiBold);
-
-        issueTitle3->SetColor(
-            Color::FromRgb(
-                7,
-                242,
-                242));
-
-        issueTitle3_ = issueTitle3.get();
-        issueTitle3_->SetVisible(false);
-
-        analysis->AddChild(
-            std::move(issueTitle3));
-
-        auto issueDescription3 =
-            std::make_unique<Text>();
-
-        issueDescription3->SetText(L"");
-
-        issueDescription3->SetSize(
-            900.0F,
-            22.0F);
-
-        issueDescription3->SetFontSize(13.0F);
-
-        issueDescription3->SetColor(
-            Color::FromRgb(
-                170,
-                170,
-                170));
-
-        issueDescription3_ = issueDescription3.get();
-        issueDescription3_->SetVisible(false);
-
-        analysis->AddChild(
-            std::move(issueDescription3));
-
-        //
-        // CLEAN TEMPORARY FILES
-        //
-
-        auto cleanButton =
-            std::make_unique<Button>();
-
-        cleanButton->SetText(
-            L"Limpar arquivos temporários");
-
-        cleanButton->SetSize(
-            220.0F,
-            48.0F);
-
-        cleanButton->SetOnClick(
-            [this]()
-            {
-                CleanTemporaryFiles();
-            });
-
-        cleanTemporaryFilesButton_ =
-            cleanButton.get();
-
-        cleanTemporaryFilesButton_->SetVisible(false);
-        cleanTemporaryFilesButton_->SetEnabled(false);
-
-        analysis->AddChild(
-            std::move(cleanButton));
-
-        //
-        // BUTTON
-        //
-
-        auto analyzeButton =
-            std::make_unique<Button>();
-
-        analyzeButton->SetText(
-            L"Analisar sistema");
-
-        analyzeButton->SetSize(
-            220.0F,
-            48.0F);
-
-        analyzeButton->SetOnClick(
-            [this]()
-            {
-                AnalyzeSystem();
-            });
-
-        analyzeButton_ =
-            analyzeButton.get();
-
-        analysis->AddChild(
-            std::move(analyzeButton));
-
-        analysisPanel_ =
-            analysis.get();
-
-        contentRow_->AddChild(
-            std::move(analysis));
+        healthTitle_ = AddText(
+            *healthSurface_,
+            L"SAÚDE DO SISTEMA",
+            12.0F,
+            FontWeight::SemiBold,
+            ColorRole::Secondary);
+
+        healthText_ = AddText(
+            *healthSurface_,
+            L"Ainda não analisado",
+            22.0F,
+            FontWeight::SemiBold,
+            ColorRole::Primary);
+
+        analysisStatusText_ = AddText(
+            *healthSurface_,
+            L"Pronto para analisar seu sistema.",
+            13.0F,
+            FontWeight::Normal,
+            ColorRole::Secondary,
+            HorizontalAlignment::Left,
+            VerticalAlignment::Top);
+
+        {
+            auto scroll = std::make_unique<ScrollPanel>();
+            issueScroll_ = scroll.get();
+
+            issueScroll_->SetOnScroll(
+                [this]()
+                {
+                    Layout(area_);
+                });
+
+            healthSurface_->AddChild(std::move(scroll));
+        }
+
+        for (std::size_t i = 0; i < issueSlots_.size(); ++i)
+        {
+            IssueSlot &slot = issueSlots_[i];
+
+            slot.box = AddSurface(
+                *issueScroll_,
+                SurfaceRole::Inset,
+                10.0F);
+
+            slot.title = AddText(
+                *slot.box,
+                L"",
+                13.0F,
+                FontWeight::SemiBold,
+                ColorRole::Primary);
+
+            slot.description = AddText(
+                *slot.box,
+                L"",
+                12.0F,
+                FontWeight::Normal,
+                ColorRole::Secondary);
+
+            // Cada alerta tem o próprio botão, ao lado do bloco.
+            slot.button = AddButton(
+                *issueScroll_,
+                L"",
+                Button::Style::Secondary);
+
+            slot.button->SetOnClick(
+                [this, i]()
+                {
+                    RunIssueAction(issueSlots_[i].action);
+                });
+
+            slot.button->SetVisible(false);
+            slot.button->SetEnabled(false);
+
+            slot.box->SetVisible(false);
+        }
 
         return true;
+    }
+
+    void DashboardPage::RunIssueAction(
+        system::IssueAction action)
+    {
+        if (
+            action == system::IssueAction::OpenCleaner &&
+            openCleaner_)
+        {
+            openCleaner_();
+        }
+        else if (
+            action == system::IssueAction::OpenServices &&
+            openServices_)
+        {
+            openServices_();
+        }
     }
 
     void DashboardPage::AnalyzeSystem()
     {
         if (
-            healthText_ == nullptr ||
-            analysisStatusText_ == nullptr ||
+            analyzing_ ||
+            shuttingDown_ ||
+            dispatcher_ == nullptr ||
             analyzeButton_ == nullptr)
         {
             return;
         }
 
-        const auto result =
-            system::SystemAnalyzer::Analyze();
+        analyzing_ = true;
 
-        //
-        // VERIFICA SE EXISTEM ARQUIVOS TEMPORÁRIOS
-        //
+        analyzeButton_->SetText(L"Analisando…");
+        analyzeButton_->SetEnabled(false);
 
-        bool hasTemporaryFilesIssue = false;
-
-        for (const auto &issue : result.issues)
+        if (worker_.joinable())
         {
-            if (issue.title == L"Arquivos temporários")
-            {
-                hasTemporaryFilesIssue = true;
-                break;
-            }
+            worker_.join();
         }
 
-        //
-        // BOTÃO DE LIMPEZA
-        //
+        // A análise lê várias pastas; roda fora da thread da
+        // interface para a janela não travar.
+        worker_ = std::thread(
+            [this]()
+            {
+                system::AnalysisResult result =
+                    system::SystemAnalyzer::Analyze();
 
-        if (cleanTemporaryFilesButton_ != nullptr)
+                dispatcher_->Post(
+                    [this, result = std::move(result)]()
+                    {
+                        analyzing_ = false;
+
+                        if (!shuttingDown_)
+                        {
+                            ApplyAnalysis(result);
+                        }
+                    });
+            });
+    }
+
+    void DashboardPage::ApplyAnalysis(
+        const system::AnalysisResult &result)
+    {
+        if (
+            healthText_ == nullptr ||
+            analysisStatusText_ == nullptr ||
+            analyzeButton_ == nullptr ||
+            healthRing_ == nullptr)
         {
-            cleanTemporaryFilesButton_->SetVisible(
-                hasTemporaryFilesIssue);
-
-            cleanTemporaryFilesButton_->SetEnabled(
-                hasTemporaryFilesIssue);
+            return;
         }
 
         //
         // HEALTH SCORE
         //
 
+        const int score =
+            std::clamp(result.healthScore, 0, 100);
+
         std::wstring healthStatus;
 
-        if (result.healthScore >= 90)
+        if (score >= 90)
         {
             healthStatus = L"Excelente";
         }
-        else if (result.healthScore >= 75)
+        else if (score >= 75)
         {
             healthStatus = L"Bom";
         }
-        else if (result.healthScore >= 50)
+        else if (score >= 50)
         {
             healthStatus = L"Atenção necessária";
         }
@@ -710,10 +759,10 @@ namespace real_optimizer::features::dashboard
             healthStatus = L"Estado crítico";
         }
 
-        healthText_->SetText(
-            std::to_wstring(result.healthScore) +
-            L" / 100  •  " +
-            healthStatus);
+        healthRing_->SetValue(
+            static_cast<float>(score));
+
+        healthText_->SetText(healthStatus);
 
         const std::size_t issueCount =
             result.GetIssueCount();
@@ -740,200 +789,197 @@ namespace real_optimizer::features::dashboard
         }
 
         //
-        // LIMPA E ESCONDE RESULTADOS ANTIGOS
+        // PROBLEMAS (todos; a área rola quando passam de 3)
         //
 
-        if (issueTitle1_ != nullptr)
+        if (issueScroll_ != nullptr)
         {
-            issueTitle1_->SetText(L"");
-            issueTitle1_->SetVisible(false);
+            issueScroll_->SetScrollOffset(0.0F);
         }
 
-        if (issueDescription1_ != nullptr)
+        visibleIssueCount_ =
+            std::min(issueCount, issueSlots_.size());
+
+        for (std::size_t i = 0; i < issueSlots_.size(); ++i)
         {
-            issueDescription1_->SetText(L"");
-            issueDescription1_->SetVisible(false);
-        }
+            IssueSlot &slot = issueSlots_[i];
 
-        if (issueTitle2_ != nullptr)
-        {
-            issueTitle2_->SetText(L"");
-            issueTitle2_->SetVisible(false);
-        }
-
-        if (issueDescription2_ != nullptr)
-        {
-            issueDescription2_->SetText(L"");
-            issueDescription2_->SetVisible(false);
-        }
-
-        if (issueTitle3_ != nullptr)
-        {
-            issueTitle3_->SetText(L"");
-            issueTitle3_->SetVisible(false);
-        }
-
-        if (issueDescription3_ != nullptr)
-        {
-            issueDescription3_->SetText(L"");
-            issueDescription3_->SetVisible(false);
-        }
-
-        //
-        // ISSUE 1
-        //
-
-        if (
-            issueCount >= 1 &&
-            issueTitle1_ != nullptr &&
-            issueDescription1_ != nullptr)
-        {
-            issueTitle1_->SetText(
-                result.issues[0].title);
-
-            issueDescription1_->SetText(
-                result.issues[0].description);
-
-            issueTitle1_->SetVisible(true);
-            issueDescription1_->SetVisible(true);
-        }
-
-        //
-        // ISSUE 2
-        //
-
-        if (
-            issueCount >= 2 &&
-            issueTitle2_ != nullptr &&
-            issueDescription2_ != nullptr)
-        {
-            issueTitle2_->SetText(
-                result.issues[1].title);
-
-            issueDescription2_->SetText(
-                result.issues[1].description);
-
-            issueTitle2_->SetVisible(true);
-            issueDescription2_->SetVisible(true);
-        }
-
-        //
-        // ISSUE 3
-        //
-
-        if (
-            issueCount >= 3 &&
-            issueTitle3_ != nullptr &&
-            issueDescription3_ != nullptr)
-        {
-            issueTitle3_->SetText(
-                result.issues[2].title);
-
-            issueDescription3_->SetText(
-                result.issues[2].description);
-
-            issueTitle3_->SetVisible(true);
-            issueDescription3_->SetVisible(true);
-        }
-
-        //
-        // ATUALIZA BOTÃO
-        //
-
-        analyzeButton_->SetText(
-            L"Analisar Novamente");
-    }
-
-    void DashboardPage::CleanTemporaryFiles()
-    {
-        if (
-            healthText_ == nullptr ||
-            analysisStatusText_ == nullptr)
-        {
-            return;
-        }
-
-        const auto cleanup =
-            system::TemporaryFilesCleaner::Clean();
-
-        if (!cleanup.valid)
-        {
-            analysisStatusText_->SetText(
-                L"Não foi possível realizar a limpeza.");
-
-            return;
-        }
-
-        constexpr std::uint64_t Megabyte =
-            1024ULL * 1024ULL;
-
-        const std::uint64_t removedMb =
-            cleanup.removedBytes / Megabyte;
-
-        const std::uint64_t failedMb =
-            cleanup.failedBytes / Megabyte;
-
-        std::wstring message;
-
-        if (cleanup.removedBytes > 0)
-        {
-            message =
-                std::to_wstring(removedMb) +
-                L" MB removidos com sucesso.";
-
-            if (cleanup.failedFiles > 0)
+            if (i < visibleIssueCount_)
             {
-                message +=
-                    L"\n" +
-                    std::to_wstring(failedMb) +
-                    L" MB não puderam ser removidos (arquivos em uso).";
+                slot.title->SetText(
+                    result.issues[i].title);
+
+                slot.description->SetText(
+                    result.issues[i].description);
+
+                slot.action = result.issues[i].action;
+
+                const bool hasAction =
+                    slot.action != system::IssueAction::None;
+
+                slot.button->SetText(
+                    slot.action == system::IssueAction::OpenServices
+                        ? L"Ver em Serviços"
+                        : L"Ver em Limpeza");
+
+                slot.button->SetVisible(hasAction);
+                slot.button->SetEnabled(hasAction);
+
+                slot.box->SetVisible(true);
+            }
+            else
+            {
+                slot.action = system::IssueAction::None;
+                slot.title->SetText(L"");
+                slot.description->SetText(L"");
+                slot.button->SetVisible(false);
+                slot.button->SetEnabled(false);
+                slot.box->SetVisible(false);
             }
         }
-        else if (cleanup.failedFiles > 0)
-        {
-            message =
-                L"Alguns arquivos estão em uso.\n" +
-                std::to_wstring(failedMb) +
-                L" MB não puderam ser removidos.";
-        }
-        else
-        {
-            message =
-                L"Não há arquivos temporários para remover.";
-        }
 
-        //
-        // Atualiza a análise após a limpeza.
-        //
+        hasAnalysis_ = true;
 
-        AnalyzeSystem();
+        analyzeButton_->SetText(
+            L"Analisar novamente");
 
-        //
-        // Exibe o resultado da limpeza.
-        //
+        analyzeButton_->SetEnabled(true);
 
-        analysisStatusText_->SetText(
-            message);
+        Layout(area_);
     }
 
-    bool DashboardPage::CreateStartupSection()
+    //
+    // INFORMAÇÕES DO SISTEMA
+    //
+
+    bool DashboardPage::CreateSystemInformation(
+        Panel &rootPanel)
     {
-        if (pagePanel_ == nullptr)
+        const auto details =
+            system::SystemInfo::GetSystemDetails();
+
+        infoSurface_ = AddSurface(
+            rootPanel,
+            SurfaceRole::Surface,
+            16.0F);
+
+        infoTitle_ = AddText(
+            *infoSurface_,
+            L"INFORMAÇÕES DO SISTEMA",
+            12.0F,
+            FontWeight::SemiBold,
+            ColorRole::Secondary);
+
+        const std::wstring labels[InfoItemCount] = {
+            L"Sistema operacional",
+            L"Computador",
+            L"Processador",
+            L"Placa de vídeo",
+            L"Memória",
+            L"Placa-mãe",
+            L"BIOS",
+            L"Monitor",
+            L"Tempo ligado",
+            L"Plano de energia"};
+
+        const auto values = BuildInfoValues(details);
+
+        for (std::size_t i = 0; i < infoRows_.size(); ++i)
         {
-            return false;
+            InfoRow &row = infoRows_[i];
+
+            // O divisor atravessa as duas colunas: só a coluna da
+            // esquerda cria, e não na primeira linha.
+            if (i >= 2 && i % 2 == 0)
+            {
+                row.divider = AddSurface(
+                    *infoSurface_,
+                    SurfaceRole::Divider,
+                    0.0F);
+            }
+
+            row.label = AddText(
+                *infoSurface_,
+                labels[i],
+                12.0F,
+                FontWeight::Normal,
+                ColorRole::Secondary);
+
+            row.fullValue = values[i];
+
+            row.value = AddText(
+                *infoSurface_,
+                values[i],
+                13.0F,
+                FontWeight::SemiBold,
+                ColorRole::Primary);
         }
 
-        //
-        // Obtém todos os aplicativos registrados
-        // para inicialização.
-        //
+        return true;
+    }
+
+    void DashboardPage::RefreshSystemInformation()
+    {
+        const auto values =
+            BuildInfoValues(system::SystemInfo::GetSystemDetails());
+
+        for (std::size_t i = 0; i < infoRows_.size(); ++i)
+        {
+            infoRows_[i].fullValue = values[i];
+
+            // Força o texto a ser ajustado de novo no Layout.
+            infoRows_[i].shownChars = 0;
+        }
+    }
+
+    //
+    // APLICATIVOS DE INICIALIZAÇÃO
+    //
+
+    bool DashboardPage::CreateStartupSection(
+        Panel &rootPanel)
+    {
+        startupSurface_ = AddSurface(
+            rootPanel,
+            SurfaceRole::Surface,
+            16.0F);
+
+        BuildStartupContents();
+
+        return true;
+    }
+
+    void DashboardPage::RefreshStartupSection()
+    {
+        if (startupSurface_ == nullptr)
+        {
+            return;
+        }
+
+        startupSurface_->ClearChildren();
+
+        startupRows_.clear();
+        startupTitle_ = nullptr;
+        startupSummary_ = nullptr;
+        startupMore_ = nullptr;
+        manageStartupButton_ = nullptr;
+
+        BuildStartupContents();
+
+        // Só reposiciona se a página já foi posicionada alguma vez.
+        if (area_.width > 0.0F)
+        {
+            Layout(area_);
+        }
+    }
+
+    void DashboardPage::BuildStartupContents()
+    {
         const auto startupApps =
             system::StartupManager::GetStartupApps();
 
-        //
-        // Mantém somente os aplicativos
-        // realmente habilitados no Windows.
-        //
+        // Somente os aplicativos realmente
+        // habilitados no Windows.
         std::vector<const system::StartupApp *> enabledApps;
 
         for (const auto &app : startupApps)
@@ -944,365 +990,360 @@ namespace real_optimizer::features::dashboard
             }
         }
 
-        auto startup =
-            std::make_unique<StackPanel>();
-
-        startup->SetSize(
-            940.0F,
-            300.0F);
-
-        startup->SetOrientation(
-            Orientation::Vertical);
-
-        startup->SetSpacing(8.0F);
-
-        //
-        // SECTION TITLE
-        //
-
-        auto title =
-            std::make_unique<Text>();
-
-        title->SetText(
-            L"APLICATIVOS DE INICIALIZAÇÃO");
-
-        title->SetSize(
-            900.0F,
-            30.0F);
-
-        title->SetFontSize(
-            18.0F);
-
-        title->SetFontWeight(
-            FontWeight::SemiBold);
-
-        title->SetColor(
-            Color::FromRgb(
-                220,
-                220,
-                220));
-
-        startup->AddChild(
-            std::move(title));
-
-        //
-        // SUMMARY
-        //
-
-        auto summary =
-            std::make_unique<Text>();
-
         const std::size_t enabledCount =
             enabledApps.size();
 
+        startupTitle_ = AddText(
+            *startupSurface_,
+            L"APLICATIVOS DE INICIALIZAÇÃO",
+            12.0F,
+            FontWeight::SemiBold,
+            ColorRole::Secondary);
+
+        std::wstring summary;
+
         if (enabledCount == 0)
         {
-            summary->SetText(
-                L"Nenhum aplicativo habilitado para iniciar com o Windows.");
+            summary =
+                L"Nenhum aplicativo habilitado para iniciar com o Windows.";
         }
         else if (enabledCount == 1)
         {
-            summary->SetText(
-                L"1 aplicativo habilitado para iniciar com o Windows.");
+            summary =
+                L"1 aplicativo habilitado para iniciar com o Windows.";
         }
         else
         {
-            summary->SetText(
+            summary =
                 std::to_wstring(enabledCount) +
-                L" aplicativos habilitados para iniciar com o Windows.");
+                L" aplicativos habilitados para iniciar com o Windows.";
         }
 
-        summary->SetSize(
-            900.0F,
-            26.0F);
+        startupSummary_ = AddText(
+            *startupSurface_,
+            summary,
+            13.0F,
+            FontWeight::Normal,
+            ColorRole::Muted);
 
-        summary->SetFontSize(
-            14.0F);
+        manageStartupButton_ = AddButton(
+            *startupSurface_,
+            L"Gerenciar inicialização",
+            Button::Style::Secondary);
 
-        summary->SetColor(
-            Color::FromRgb(
-                170,
-                170,
-                170));
-
-        startup->AddChild(
-            std::move(summary));
-
-        //
-        // MOSTRA ATÉ 5 APLICATIVOS HABILITADOS
-        //
-
-        constexpr std::size_t MaxVisibleApps = 5;
-
-        const std::size_t appCount =
-            enabledCount < MaxVisibleApps
-                ? enabledCount
-                : MaxVisibleApps;
-
-        for (
-            std::size_t i = 0;
-            i < appCount;
-            ++i)
-        {
-            auto appText =
-                std::make_unique<Text>();
-
-            appText->SetText(
-                enabledApps[i]->name);
-
-            appText->SetSize(
-                900.0F,
-                24.0F);
-
-            appText->SetFontSize(
-                15.0F);
-
-            appText->SetFontWeight(
-                FontWeight::SemiBold);
-
-            appText->SetColor(
-                Color::FromRgb(
-                    7,
-                    242,
-                    242));
-
-            startup->AddChild(
-                std::move(appText));
-        }
-
-        //
-        // MOSTRA SE EXISTEM MAIS
-        //
-
-        if (enabledCount > MaxVisibleApps)
-        {
-            auto moreText =
-                std::make_unique<Text>();
-
-            moreText->SetText(
-                L"+ " +
-                std::to_wstring(
-                    enabledCount -
-                    MaxVisibleApps) +
-                L" outros aplicativos habilitados");
-
-            moreText->SetSize(
-                900.0F,
-                24.0F);
-
-            moreText->SetFontSize(
-                13.0F);
-
-            moreText->SetColor(
-                Color::FromRgb(
-                    150,
-                    150,
-                    150));
-
-            startup->AddChild(
-                std::move(moreText));
-        }
-
-        //
-        // BOTÃO GERENCIAR INICIALIZAÇÃO
-        //
-
-        auto manageButton =
-            std::make_unique<Button>();
-
-        manageButton->SetText(
-            L"Gerenciar inicialização");
-
-        manageButton->SetSize(
-            220.0F,
-            48.0F);
-
-        manageButton->SetOnClick(
+        manageStartupButton_->SetOnClick(
             [this]()
             {
-                OpenStartupSettings();
+                if (openStartup_)
+                {
+                    openStartup_();
+                }
             });
 
-        manageStartupButton_ =
-            manageButton.get();
+        const std::size_t visibleCount =
+            std::min(enabledCount, MaxVisibleStartupApps);
 
-        startup->AddChild(
-            std::move(manageButton));
-
-        startupPanel_ =
-            startup.get();
-
-        pagePanel_->AddChild(
-            std::move(startup));
-
-        return true;
-    }
-
-    void DashboardPage::OpenStartupSettings()
-    {
-        const HINSTANCE result =
-            ShellExecuteW(
-                nullptr,
-                L"open",
-                L"ms-settings:startupapps",
-                nullptr,
-                nullptr,
-                SW_SHOWNORMAL);
-
-        if (
-            reinterpret_cast<INT_PTR>(result) <= 32)
+        for (std::size_t i = 0; i < visibleCount; ++i)
         {
-            MessageBoxW(
-                nullptr,
-                L"Não foi possível abrir as configurações de inicialização do Windows.",
-                L"UltraEdgeX",
-                MB_OK | MB_ICONWARNING);
+            StartupRow row;
+
+            row.divider = AddSurface(
+                *startupSurface_,
+                SurfaceRole::Divider,
+                0.0F);
+
+            row.icon = AddSurface(
+                *startupSurface_,
+                SurfaceRole::AccentSoft,
+                7.0F);
+
+            // Nome amigável (o nome bruto de apps da Loja é um
+            // identificador de pacote).
+            const std::wstring name =
+                system::StartupCatalog::Describe(*enabledApps[i])
+                    .displayName;
+
+            std::wstring letter =
+                name.empty()
+                    ? std::wstring(L"?")
+                    : std::wstring(1, name.front());
+
+            row.iconLetter = AddText(
+                *row.icon,
+                letter,
+                13.0F,
+                FontWeight::Bold,
+                ColorRole::Accent,
+                HorizontalAlignment::Center);
+
+            row.name = AddText(
+                *startupSurface_,
+                name,
+                14.0F,
+                FontWeight::SemiBold,
+                ColorRole::Primary);
+
+            row.badge = AddSurface(
+                *startupSurface_,
+                SurfaceRole::AccentSoft,
+                11.0F);
+
+            row.badgeText = AddText(
+                *row.badge,
+                L"Habilitado",
+                11.0F,
+                FontWeight::SemiBold,
+                ColorRole::Accent,
+                HorizontalAlignment::Center);
+
+            startupRows_.push_back(row);
+        }
+
+        if (enabledCount > MaxVisibleStartupApps)
+        {
+            startupMore_ = AddText(
+                *startupSurface_,
+                L"+ " +
+                    std::to_wstring(
+                        enabledCount - MaxVisibleStartupApps) +
+                    L" outros aplicativos habilitados",
+                13.0F,
+                FontWeight::Normal,
+                ColorRole::Muted);
         }
     }
 
-    bool DashboardPage::CreateSystemInformation()
+    //
+    // DISCO MOSTRADO NO CARD
+    //
+
+    void DashboardPage::CloseMenus()
     {
-        if (contentRow_ == nullptr)
+        if (drivePicker_ != nullptr)
         {
-            return false;
+            drivePicker_->Hide();
+        }
+    }
+
+    bool DashboardPage::OnKeyDown(unsigned int virtualKey)
+    {
+        return drivePicker_ != nullptr &&
+               drivePicker_->OnKeyDown(virtualKey);
+    }
+
+    void DashboardPage::RefreshDriveList()
+    {
+        drives_ = system::SystemInfo::GetFixedDrives();
+
+        // Se o disco escolhido sumiu (ex.: HD externo desconectado),
+        // volta para o disco do sistema.
+        if (!selectedDriveRoot_.empty())
+        {
+            const bool found = std::any_of(
+                drives_.begin(),
+                drives_.end(),
+                [this](const system::DriveInfo &drive)
+                { return drive.root == selectedDriveRoot_; });
+
+            if (!found)
+            {
+                selectedDriveRoot_.clear();
+            }
         }
 
-        const auto details =
-            system::SystemInfo::GetSystemDetails();
-
-        auto section =
-            std::make_unique<StackPanel>();
-
-        section->SetSize(
-            450.0F,
-            360.0F);
-
-        section->SetOrientation(
-            Orientation::Vertical);
-
-        section->SetSpacing(
-            7.0F);
-
-        //
-        // TITLE
-        //
-
-        auto title =
-            std::make_unique<Text>();
-
-        title->SetText(
-            L"INFORMAÇÕES DO SISTEMA");
-
-        title->SetSize(
-            900.0F,
-            30.0F);
-
-        title->SetFontSize(
-            18.0F);
-
-        title->SetFontWeight(
-            FontWeight::SemiBold);
-
-        title->SetColor(
-            Color::FromRgb(
-                220,
-                220,
-                220));
-
-        section->AddChild(
-            std::move(title));
-
-        //
-        // Helper para criar as linhas.
-        //
-
-        const auto addInformationLine =
-            [&section](
-                const std::wstring &label,
-                const std::wstring &value)
+        if (diskCard_ != nullptr)
         {
-            auto text =
-                std::make_unique<Text>();
+            // Com um disco só, não há o que escolher: sem seta.
+            diskCard_->SetSelectorVisible(drives_.size() > 1);
+        }
 
-            text->SetText(
-                label +
-                L":  " +
-                value);
-
-            text->SetSize(
-                900.0F,
-                24.0F);
-
-            text->SetFontSize(
-                14.0F);
-
-            text->SetColor(
-                Color::FromRgb(
-                    190,
-                    190,
-                    190));
-
-            section->AddChild(
-                std::move(text));
-        };
-
-        //
-        // OPERATING SYSTEM
-        //
-
-        addInformationLine(
-            L"Sistema Operacional",
-            details.operatingSystem);
-
-        //
-        // PROCESSOR
-        //
-
-        addInformationLine(
-            L"Processador",
-            details.processorName);
-
-        //
-        // MEMORY
-        //
-
-        const std::uint64_t memoryGb =
-            (details.totalMemoryBytes +
-             Gigabyte / 2) /
-            Gigabyte;
-
-        addInformationLine(
-            L"Memória",
-            std::to_wstring(memoryGb) +
-                L" GB");
-
-        //
-        // ARCHITECTURE
-        //
-
-        addInformationLine(
-            L"Arquitetura",
-            details.architecture);
-
-        //
-        // COMPUTER
-        //
-
-        addInformationLine(
-            L"Computador",
-            details.computerName);
-
-        contentRow_->AddChild(
-            std::move(section));
-
-        return true;
+        UpdateDiskCard();
     }
+
+    void DashboardPage::UpdateDiskCard()
+    {
+        if (diskCard_ == nullptr)
+        {
+            return;
+        }
+
+        system::DiskInfo disk =
+            selectedDriveRoot_.empty()
+                ? system::SystemInfo::GetSystemDiskInfo()
+                : system::SystemInfo::GetDiskInfo(selectedDriveRoot_);
+
+        if (!selectedDriveRoot_.empty() && disk.totalBytes == 0)
+        {
+            selectedDriveRoot_.clear();
+            disk = system::SystemInfo::GetSystemDiskInfo();
+        }
+
+        std::wstring title = L"DISCO DO SISTEMA";
+
+        if (!selectedDriveRoot_.empty())
+        {
+            title = L"DISCO " + selectedDriveRoot_.substr(0, 2);
+
+            for (const system::DriveInfo &drive : drives_)
+            {
+                if (drive.root == selectedDriveRoot_ &&
+                    !drive.label.empty())
+                {
+                    std::wstring label = drive.label;
+
+                    for (wchar_t &c : label)
+                    {
+                        c = static_cast<wchar_t>(std::towupper(c));
+                    }
+
+                    title += L" · " + label;
+                    break;
+                }
+            }
+        }
+
+        diskCard_->SetTitle(title);
+        diskCard_->SetValue(FormatGigabytes(disk.totalBytes));
+
+        diskCard_->SetDescription(
+            FormatGigabytes(disk.freeBytes) + L" disponíveis");
+
+        if (disk.totalBytes > 0)
+        {
+            const double used =
+                static_cast<double>(disk.totalBytes - disk.freeBytes) /
+                static_cast<double>(disk.totalBytes);
+
+            diskCard_->SetProgress(static_cast<float>(used));
+        }
+    }
+
+    void DashboardPage::OpenDriveMenu()
+    {
+        if (drivePicker_ == nullptr || diskCard_ == nullptr)
+        {
+            return;
+        }
+
+        if (drivePicker_->IsOpen())
+        {
+            drivePicker_->Hide();
+            return;
+        }
+
+        // Lista atualizada na hora de abrir.
+        RefreshDriveList();
+
+        if (drives_.size() < 2)
+        {
+            return;
+        }
+
+        const std::wstring currentRoot =
+            selectedDriveRoot_.empty()
+                ? [this]() -> std::wstring
+                {
+                    for (const system::DriveInfo &drive : drives_)
+                    {
+                        if (drive.isSystem)
+                        {
+                            return drive.root;
+                        }
+                    }
+
+                    return {};
+                }()
+                : selectedDriveRoot_;
+
+        std::vector<DrivePickerItem> items;
+        std::size_t selectedIndex = DrivePicker::MaxItems;
+
+        for (std::size_t i = 0;
+             i < drives_.size() && i < DrivePicker::MaxItems;
+             ++i)
+        {
+            const system::DriveInfo &drive = drives_[i];
+
+            DrivePickerItem item;
+
+            item.title =
+                drive.root.substr(0, 2) + L" " +
+                (drive.label.empty() ? std::wstring(L"Disco local")
+                                     : drive.label) +
+                (drive.isSystem ? L" (Sistema)" : L"");
+
+            std::wstring kind;
+
+            if (drive.kind == system::DriveKind::Ssd)
+            {
+                kind = L"SSD";
+            }
+            else if (drive.kind == system::DriveKind::Hdd)
+            {
+                kind = L"HD";
+            }
+
+            const std::wstring space =
+                FormatGigabytes(drive.freeBytes) + L" livres de " +
+                FormatGigabytes(drive.totalBytes);
+
+            item.detail = kind.empty() ? space : kind + L" · " + space;
+
+            item.usedFraction =
+                drive.totalBytes > 0
+                    ? static_cast<float>(
+                          static_cast<double>(drive.totalBytes -
+                                              drive.freeBytes) /
+                          static_cast<double>(drive.totalBytes))
+                    : 0.0F;
+
+            if (drive.root == currentRoot)
+            {
+                selectedIndex = i;
+            }
+
+            items.push_back(std::move(item));
+        }
+
+        drivePicker_->Show(
+            std::move(items),
+            selectedIndex,
+            diskCard_->GetSelectorBounds(),
+            [this](std::size_t index)
+            {
+                if (index >= drives_.size())
+                {
+                    return;
+                }
+
+                // Escolher o disco do sistema volta ao modo padrão.
+                selectedDriveRoot_ =
+                    drives_[index].isSystem ? std::wstring()
+                                            : drives_[index].root;
+
+                UpdateDiskCard();
+            },
+            [this]()
+            {
+                if (diskCard_ != nullptr)
+                {
+                    diskCard_->SetSelectorOpen(false);
+                }
+            });
+
+        diskCard_->SetSelectorOpen(true);
+    }
+
+    //
+    // TEMPO REAL
+    //
 
     void DashboardPage::RefreshRealtimeStats()
     {
         if (
             cpuCard_ == nullptr ||
-            memoryCard_ == nullptr)
+            memoryCard_ == nullptr ||
+            diskCard_ == nullptr)
         {
             return;
         }
@@ -1313,36 +1354,241 @@ namespace real_optimizer::features::dashboard
         if (cpu.valid)
         {
             cpuCard_->SetValue(
-                std::to_wstring(
-                    cpu.usagePercent) +
+                std::to_wstring(cpu.usagePercent) +
                 L"%");
+
+            cpuCard_->SetProgress(
+                static_cast<float>(cpu.usagePercent) /
+                100.0F);
         }
 
         const auto memory =
             system::SystemInfo::GetMemoryInfo();
 
         memoryCard_->SetDescription(
-            std::to_wstring(
-                memory.usagePercent) +
+            std::to_wstring(memory.usagePercent) +
             L"% em uso");
+
+        memoryCard_->SetProgress(
+            static_cast<float>(memory.usagePercent) /
+            100.0F);
+
+        UpdateDiskCard();
     }
 
-    void DashboardPage::Resize(
-        float width,
-        float height) noexcept
+    //
+    // LAYOUT
+    //
+
+    void DashboardPage::Layout(
+        const Rect &area)
     {
-        if (pagePanel_ == nullptr)
+        area_ = area;
+
+        if (drivePicker_ != nullptr)
+        {
+            drivePicker_->SetBounds(area);
+        }
+
+        if (titleText_ == nullptr || issueScroll_ == nullptr)
         {
             return;
         }
 
-        pagePanel_->SetSize(
-            width > 80.0F
-                ? width - 80.0F
-                : 0.0F,
+        const float mainX = area.x;
+        const float mainWidth = area.width;
 
-            height > 80.0F
-                ? height - 80.0F
-                : 0.0F);
+        float y = area.y;
+
+        // Cabeçalho (o seletor de tema fica por conta do shell)
+        Place(titleText_, mainX, y, 400.0F, 36.0F);
+        Place(subtitleText_, mainX, y + 38.0F, 400.0F, 20.0F);
+
+        Place(
+            analyzeButton_,
+            mainX + mainWidth - HeaderActionReserve - 180.0F,
+            y,
+            180.0F,
+            48.0F);
+
+        y += HeaderHeight + SectionGap;
+
+        // Métricas
+        const float cardWidth =
+            (mainWidth - SectionGap * 2.0F) / 3.0F;
+
+        Card *cards[] = {cpuCard_, memoryCard_, diskCard_};
+
+        for (std::size_t i = 0; i < 3; ++i)
+        {
+            Place(
+                cards[i],
+                mainX + static_cast<float>(i) * (cardWidth + SectionGap),
+                y,
+                cardWidth,
+                MetricCardHeight);
+        }
+
+        y += MetricCardHeight + SectionGap;
+
+        //
+        // Saúde do sistema + Informações do sistema
+        //
+
+        const float healthWidth =
+            (mainWidth - SectionGap) * 0.49F;
+
+        const float infoWidth =
+            mainWidth - SectionGap - healthWidth;
+
+        Place(healthSurface_, mainX, y, healthWidth, MiddleRowHeight);
+
+        const float ringSize = 140.0F;
+
+        Place(healthRing_, mainX + 26.0F, y + 26.0F, ringSize, ringSize);
+
+        const float textX = mainX + 26.0F + ringSize + 26.0F;
+        const float textWidth = healthWidth - (textX - mainX) - 26.0F;
+
+        Place(healthTitle_, textX, y + 28.0F, textWidth, 18.0F);
+        Place(healthText_, textX, y + 48.0F, textWidth, 28.0F);
+        Place(analysisStatusText_, textX, y + 80.0F, textWidth, 34.0F);
+
+        // Alertas: ficam numa área com rolagem. O bloco ocupa a largura
+        // toda; se tiver ação, o botão fica à direita e o bloco encolhe
+        // para ele caber. Uma faixa à direita fica livre para a barra
+        // de rolagem não ficar em cima dos botões.
+        constexpr float IssueButtonWidth = 136.0F;
+        constexpr float IssueButtonGap = 8.0F;
+
+        const float fullIssueWidth = healthWidth - 52.0F;
+        const float contentWidth = fullIssueWidth - IssueScrollbarGutter;
+
+        const Rect issueViewport{
+            mainX + 26.0F,
+            y + IssueViewportTop,
+            fullIssueWidth,
+            IssueViewportHeight};
+
+        issueScroll_->SetBounds(issueViewport);
+
+        issueScroll_->SetContentHeight(
+            static_cast<float>(visibleIssueCount_) * IssueRowHeight);
+
+        const float issueOffset = issueScroll_->GetScrollOffset();
+
+        for (std::size_t i = 0; i < issueSlots_.size(); ++i)
+        {
+            const IssueSlot &slot = issueSlots_[i];
+
+            const bool hasAction =
+                slot.action != system::IssueAction::None;
+
+            const float boxY =
+                issueViewport.y +
+                static_cast<float>(i) * IssueRowHeight -
+                issueOffset;
+
+            const float boxWidth = hasAction
+                                       ? contentWidth - IssueButtonWidth - IssueButtonGap
+                                       : contentWidth;
+
+            Place(slot.box, issueViewport.x, boxY, boxWidth, 44.0F);
+            Place(slot.title, issueViewport.x + 14.0F, boxY + 5.0F, boxWidth - 28.0F, 18.0F);
+            Place(slot.description, issueViewport.x + 14.0F, boxY + 23.0F, boxWidth - 28.0F, 16.0F);
+
+            Place(
+                slot.button,
+                issueViewport.x + boxWidth + IssueButtonGap,
+                boxY + 2.0F,
+                IssueButtonWidth,
+                40.0F);
+        }
+
+        const float infoX = mainX + healthWidth + SectionGap;
+
+        Place(infoSurface_, infoX, y, infoWidth, MiddleRowHeight);
+        Place(infoTitle_, infoX + 26.0F, y + 24.0F, infoWidth - 52.0F, 18.0F);
+
+        const float infoInnerX = infoX + 26.0F;
+        const float infoInnerWidth = infoWidth - 52.0F;
+
+        const float columnWidth =
+            (infoInnerWidth - InfoColumnGap) / 2.0F;
+
+        const auto maxChars = static_cast<std::size_t>(
+            std::max(8.0F, columnWidth / InfoValueCharWidth));
+
+        for (std::size_t i = 0; i < infoRows_.size(); ++i)
+        {
+            InfoRow &row = infoRows_[i];
+
+            const std::size_t line = i / 2;
+            const std::size_t column = i % 2;
+
+            const float rowY =
+                y + 58.0F + static_cast<float>(line) * InfoRowHeight;
+
+            const float columnX =
+                infoInnerX +
+                static_cast<float>(column) * (columnWidth + InfoColumnGap);
+
+            Place(row.divider, infoInnerX, rowY, infoInnerWidth, 1.0F);
+            Place(row.label, columnX, rowY + 8.0F, columnWidth, 16.0F);
+            Place(row.value, columnX, rowY + 26.0F, columnWidth, 22.0F);
+
+            // Texto longo é encurtado com "…" para caber na coluna.
+            if (row.value != nullptr && row.shownChars != maxChars)
+            {
+                row.value->SetText(FitText(row.fullValue, maxChars));
+                row.shownChars = maxChars;
+            }
+        }
+
+        y += MiddleRowHeight + SectionGap;
+
+        //
+        // Aplicativos de inicialização
+        //
+
+        const float rowsHeight =
+            static_cast<float>(startupRows_.size()) * StartupRowHeight;
+
+        const float moreHeight =
+            startupMore_ != nullptr ? 28.0F : 0.0F;
+
+        Place(
+            startupSurface_,
+            mainX,
+            y,
+            mainWidth,
+            66.0F + rowsHeight + moreHeight + 16.0F);
+
+        Place(startupTitle_, mainX + 26.0F, y + 22.0F, mainWidth - 300.0F, 18.0F);
+        Place(startupSummary_, mainX + 26.0F, y + 42.0F, mainWidth - 300.0F, 20.0F);
+        Place(manageStartupButton_, mainX + mainWidth - 26.0F - 190.0F, y + 16.0F, 190.0F, 38.0F);
+
+        for (std::size_t i = 0; i < startupRows_.size(); ++i)
+        {
+            const StartupRow &row = startupRows_[i];
+            const float rowY = y + 66.0F + static_cast<float>(i) * StartupRowHeight;
+
+            Place(row.divider, mainX + 26.0F, rowY, mainWidth - 52.0F, 1.0F);
+            Place(row.icon, mainX + 26.0F, rowY + 7.0F, 24.0F, 24.0F);
+            Place(row.iconLetter, mainX + 26.0F, rowY + 7.0F, 24.0F, 24.0F);
+            Place(row.name, mainX + 62.0F, rowY + 1.0F, mainWidth - 220.0F, StartupRowHeight - 1.0F);
+
+            const float badgeX = mainX + mainWidth - 26.0F - 84.0F;
+
+            Place(row.badge, badgeX, rowY + 8.0F, 84.0F, 22.0F);
+            Place(row.badgeText, badgeX, rowY + 8.0F, 84.0F, 22.0F);
+        }
+
+        Place(
+            startupMore_,
+            mainX + 26.0F,
+            y + 66.0F + rowsHeight + 6.0F,
+            mainWidth - 52.0F,
+            20.0F);
     }
 }

@@ -1,5 +1,6 @@
 #include "roui/controls/Button.h"
 
+#include "roui/core/Theme.h"
 #include "roui/rendering/Renderer.h"
 
 #include <utility>
@@ -14,6 +15,21 @@ namespace real_optimizer::roui
     void Button::SetOnClick(ClickHandler handler)
     {
         onClick_ = std::move(handler);
+    }
+
+    void Button::SetStyle(Style style) noexcept
+    {
+        style_ = style;
+    }
+
+    void Button::SetActive(bool active) noexcept
+    {
+        active_ = active;
+    }
+
+    void Button::SetBadge(std::wstring badge)
+    {
+        badge_ = std::move(badge);
     }
 
     void Button::OnMouseMove(const Point &point)
@@ -88,38 +104,197 @@ namespace real_optimizer::roui
     void Button::OnRender(
         rendering::Renderer &renderer)
     {
-        Color backgroundColor =
-            Color::FromRgb(22, 158, 242);
+        const Palette &palette = Theme::Current();
+        const Rect &bounds = GetBounds();
 
-        switch (state_)
+        const bool enabled = IsEnabled();
+        const bool hovered = enabled && state_ == State::Hovered;
+        const bool pressed = enabled && state_ == State::Pressed;
+        const bool highlighted = hovered || pressed;
+
+        switch (style_)
         {
-        case State::Hovered:
-            backgroundColor =
-                Color::FromRgb(15, 201, 242);
-            break;
+        case Style::Primary:
+        {
+            Color fill = palette.accent;
 
-        case State::Pressed:
-            backgroundColor =
-                Color::FromRgb(7, 170, 210);
-            break;
+            if (!enabled)
+            {
+                fill = Color::Mix(
+                    palette.surface,
+                    palette.accent,
+                    0.35F);
+            }
+            else if (pressed)
+            {
+                fill = Color::Mix(
+                    palette.accent,
+                    Color::FromRgb(0, 0, 0),
+                    0.20F);
+            }
+            else if (hovered)
+            {
+                fill = Color::Mix(
+                    palette.accent,
+                    Color::FromRgb(255, 255, 255),
+                    0.15F);
+            }
 
-        case State::Normal:
-        default:
+            renderer.FillRoundedRectangle(
+                bounds,
+                12.0F,
+                fill);
+
+            renderer.DrawText(
+                text_,
+                bounds,
+                14.0F,
+                FontWeight::Bold,
+                palette.onAccent,
+                HorizontalAlignment::Center,
+                VerticalAlignment::Center);
+
             break;
         }
 
-        renderer.FillRoundedRectangle(
-            GetBounds(),
-            10.0F,
-            backgroundColor);
+        case Style::Secondary:
+        {
+            if (pressed)
+            {
+                renderer.FillRoundedRectangle(
+                    bounds,
+                    12.0F,
+                    palette.accentSoft);
+            }
 
-        renderer.DrawText(
-            text_,
-            GetBounds(),
-            16.0F,
-            FontWeight::SemiBold,
-            Color::FromRgb(13, 13, 13),
-            HorizontalAlignment::Center,
-            VerticalAlignment::Center);
+            renderer.DrawRoundedRectangle(
+                bounds,
+                12.0F,
+                1.0F,
+                !enabled
+                    ? palette.track
+                    : (highlighted ? palette.accent : palette.outline));
+
+            renderer.DrawText(
+                text_,
+                bounds,
+                13.0F,
+                FontWeight::SemiBold,
+                !enabled
+                    ? palette.textMuted
+                    : (highlighted ? palette.accentText
+                                   : palette.textPrimary),
+                HorizontalAlignment::Center,
+                VerticalAlignment::Center);
+
+            break;
+        }
+
+        case Style::Nav:
+        {
+            if (active_)
+            {
+                renderer.FillRoundedRectangle(
+                    bounds,
+                    10.0F,
+                    palette.accentSoft);
+            }
+            else if (highlighted)
+            {
+                renderer.FillRoundedRectangle(
+                    bounds,
+                    10.0F,
+                    palette.hover);
+            }
+
+            Color textColor = palette.textSecondary;
+
+            if (active_)
+            {
+                textColor = palette.accentText;
+            }
+            else if (!enabled)
+            {
+                textColor = palette.textMuted;
+            }
+
+            const Rect label{
+                bounds.x + 14.0F,
+                bounds.y,
+                bounds.width - 28.0F,
+                bounds.height};
+
+            renderer.DrawText(
+                text_,
+                label,
+                14.0F,
+                active_
+                    ? FontWeight::SemiBold
+                    : FontWeight::Normal,
+                textColor,
+                HorizontalAlignment::Left,
+                VerticalAlignment::Center);
+
+            if (!badge_.empty())
+            {
+                constexpr float BadgeWidth = 66.0F;
+                constexpr float BadgeHeight = 22.0F;
+
+                const Rect badge{
+                    bounds.Right() - BadgeWidth - 10.0F,
+                    bounds.y + (bounds.height - BadgeHeight) / 2.0F,
+                    BadgeWidth,
+                    BadgeHeight};
+
+                renderer.DrawRoundedRectangle(
+                    badge,
+                    BadgeHeight / 2.0F,
+                    1.0F,
+                    palette.outline);
+
+                renderer.DrawText(
+                    badge_,
+                    badge,
+                    11.0F,
+                    FontWeight::Normal,
+                    palette.textMuted,
+                    HorizontalAlignment::Center,
+                    VerticalAlignment::Center);
+            }
+
+            break;
+        }
+
+        case Style::Segment:
+        {
+            if (active_)
+            {
+                renderer.FillRoundedRectangle(
+                    bounds,
+                    9.0F,
+                    palette.accentSoft);
+            }
+            else if (highlighted)
+            {
+                renderer.FillRoundedRectangle(
+                    bounds,
+                    9.0F,
+                    palette.hover);
+            }
+
+            renderer.DrawText(
+                text_,
+                bounds,
+                13.0F,
+                FontWeight::SemiBold,
+                active_
+                    ? palette.accentText
+                    : palette.textSecondary,
+                HorizontalAlignment::Center,
+                VerticalAlignment::Center);
+
+            break;
+        }
+        }
     }
 }

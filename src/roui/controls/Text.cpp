@@ -1,5 +1,6 @@
 #include "roui/controls/Text.h"
 
+#include "roui/core/Theme.h"
 #include "roui/rendering/Renderer.h"
 
 #include <utility>
@@ -29,6 +30,12 @@ namespace real_optimizer::roui
     void Text::SetColor(const Color& color) noexcept
     {
         color_ = color;
+        colorRole_ = ColorRole::Custom;
+    }
+
+    void Text::SetColorRole(ColorRole role) noexcept
+    {
+        colorRole_ = role;
     }
 
     void Text::SetHorizontalAlignment(
@@ -74,7 +81,7 @@ namespace real_optimizer::roui
             GetBounds(),
             fontSize_,
             fontWeight_,
-            color_,
+            Theme::Resolve(colorRole_, color_),
             horizontalAlignment_,
             verticalAlignment_
         );

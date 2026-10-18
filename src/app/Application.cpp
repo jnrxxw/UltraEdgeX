@@ -1,5 +1,8 @@
 #include "app/Application.h"
 
+#include "core/Logger.h"
+#include "roui/core/Theme.h"
+
 #include <cstdlib>
 
 namespace real_optimizer::app
@@ -31,12 +34,23 @@ namespace real_optimizer::app
         HINSTANCE instance,
         int showCommand)
     {
+        const HRESULT comResult = CoInitializeEx(
+            nullptr,
+            COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
+        comInitialized_ = SUCCEEDED(comResult);
+
+        real_optimizer::core::Logger::Info(L"UeX iniciado.");
+
+        // Carrega o tema (escuro/claro) salvo pelo usuário.
+        real_optimizer::roui::Theme::LoadPreference();
+
         const bool created =
             mainWindow_.Create(
                 instance,
                 L"UltraEdgeX",
-                1000,
-                1050);
+                1280,
+                950);
 
         if (!created)
         {
@@ -50,5 +64,12 @@ namespace real_optimizer::app
 
     void Application::Shutdown()
     {
+        real_optimizer::core::Logger::Info(L"UeX encerrado.");
+
+        if (comInitialized_)
+        {
+            CoUninitialize();
+            comInitialized_ = false;
+        }
     }
 }

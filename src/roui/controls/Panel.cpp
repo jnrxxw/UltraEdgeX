@@ -27,7 +27,38 @@ namespace real_optimizer::roui
 
     void Panel::ClearChildren() noexcept
     {
+        modalChild_ = nullptr;
         children_.clear();
+    }
+
+    void Panel::SetModalChild(UIElement* child) noexcept
+    {
+        modalChild_ = child;
+    }
+
+    bool Panel::IsModalActive() const noexcept
+    {
+        return modalChild_ != nullptr && modalChild_->IsVisible();
+    }
+
+    // Ao abrir um diálogo, os botões por baixo podem estar com o
+    // estado "hover"; limpa uma vez para não ficarem acesos.
+    void Panel::ResetHoverOfOtherChildren()
+    {
+        if (hoverResetForModal_)
+        {
+            return;
+        }
+
+        hoverResetForModal_ = true;
+
+        for (auto& child : children_)
+        {
+            if (child != nullptr && child.get() != modalChild_)
+            {
+                child->OnMouseLeave();
+            }
+        }
     }
 
     std::size_t Panel::GetChildCount()
@@ -56,6 +87,15 @@ namespace real_optimizer::roui
         const Point& point
     )
     {
+        if (IsModalActive())
+        {
+            ResetHoverOfOtherChildren();
+            modalChild_->OnMouseMove(point);
+            return;
+        }
+
+        hoverResetForModal_ = false;
+
         for (auto& child : children_)
         {
             if (
@@ -71,6 +111,13 @@ namespace real_optimizer::roui
 
     void Panel::OnMouseLeave()
     {
+        if (IsModalActive())
+        {
+            ResetHoverOfOtherChildren();
+            modalChild_->OnMouseLeave();
+            return;
+        }
+
         for (auto& child : children_)
         {
             if (child != nullptr)
@@ -84,6 +131,13 @@ namespace real_optimizer::roui
         const Point& point
     )
     {
+        if (IsModalActive())
+        {
+            ResetHoverOfOtherChildren();
+            modalChild_->OnMouseDown(point);
+            return;
+        }
+
         //
         // Propaga o evento para os filhos.
         //
@@ -112,6 +166,12 @@ namespace real_optimizer::roui
         const Point& point
     )
     {
+        if (IsModalActive())
+        {
+            modalChild_->OnMouseUp(point);
+            return;
+        }
+
         //
         // Mantemos MouseDown e MouseUp
         // com a mesma estratégia de
@@ -127,6 +187,30 @@ namespace real_optimizer::roui
             )
             {
                 child->OnMouseUp(point);
+            }
+        }
+    }
+
+    void Panel::OnMouseWheel(
+        const Point& point,
+        float notches
+    )
+    {
+        if (IsModalActive())
+        {
+            modalChild_->OnMouseWheel(point, notches);
+            return;
+        }
+
+        for (auto& child : children_)
+        {
+            if (
+                child != nullptr &&
+                child->IsVisible() &&
+                child->IsEnabled()
+            )
+            {
+                child->OnMouseWheel(point, notches);
             }
         }
     }

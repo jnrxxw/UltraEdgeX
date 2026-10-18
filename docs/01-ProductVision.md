@@ -1,22 +1,22 @@
 # Product Vision
 
-| Projeto | Real Optimizer |
+| Projeto | UltraEdgeX (UeX) |
 |----------|----------------|
 | Documento | Product Vision |
-| Versão | 1.0 |
+| Versão | 1.1 |
 | Status | Em desenvolvimento |
 | Autor | Junior |
-| Última atualização | Julho/2026 |
+| Última atualização | Outubro/2026 |
+
+> O nome do produto é **UltraEdgeX**, abreviado como **UeX** na interface (DEC-012). "Real Optimizer" foi o nome provisório inicial e permanece apenas em nomes técnicos do código (namespace `real_optimizer` e a camada ROUI).
 
 ---
 
 # 1. Visão
 
-O Real Optimizer é um software moderno de otimização e monitoramento para Windows.
+O UltraEdgeX é um software moderno de otimização e monitoramento para Windows.
 
 O objetivo do projeto não é apenas remover arquivos temporários ou alterar configurações do sistema, mas oferecer ao usuário uma visão clara da saúde do computador, explicar cada recomendação e permitir que todas as otimizações sejam executadas com segurança e transparência.
-
-Queremos construir um software que inspire confiança, eliminando a ideia de que programas de otimização fazem alterações ocultas ou perigosas.
 
 ---
 
@@ -34,15 +34,7 @@ Criar o melhor software de otimização para Windows baseado em quatro pilares:
 
 ---
 
-# 3. Visão de longo prazo
-
-Ser reconhecido como um dos softwares de otimização para Windows mais confiáveis do mercado.
-
-Nosso objetivo não é competir apenas por quantidade de funcionalidades, mas por qualidade, organização e experiência do usuário.
-
----
-
-# 4. Público-alvo
+# 3. Público-alvo
 
 ## Usuário comum
 
@@ -50,37 +42,7 @@ Deseja melhorar o desempenho do computador sem precisar entender detalhes técni
 
 ---
 
-## Gamer
-
-Busca maior desempenho, monitoramento de hardware e uma experiência mais fluida durante os jogos.
-
----
-
-## Usuário avançado
-
-Deseja controle detalhado das configurações do Windows, inicialização, serviços e recursos de otimização.
-
----
-
-# 5. Problema que resolvemos
-
-Hoje muitos programas de otimização:
-
-• fazem alterações sem explicar;
-
-• utilizam linguagem extremamente técnica;
-
-• escondem informações importantes;
-
-• executam dezenas de alterações automaticamente;
-
-• prometem ganhos irreais de desempenho.
-
-O Real Optimizer nasce para resolver exatamente esses problemas.
-
----
-
-# 6. Nossa filosofia
+# 4. Filosofia
 
 Antes de qualquer alteração o software deve:
 
@@ -106,7 +68,7 @@ O usuário nunca deve sentir que perdeu o controle do computador.
 
 ---
 
-# 7. Valores
+# 5. Valores
 
 ## Transparência
 
@@ -114,7 +76,6 @@ Toda otimização deverá explicar:
 
 - o que será feito;
 - por que será feito;
-- quais benefícios são esperados;
 - quais riscos existem.
 
 ---
@@ -133,6 +94,8 @@ Nunca prometer ganhos irreais de desempenho.
 
 As recomendações serão baseadas nas características reais do sistema.
 
+Na prática: o UeX não mostra "impacto" ou "ganho estimado" que não consiga medir de forma confiável, e o que ele não reconhece nunca é tratado como seguro.
+
 ---
 
 ## Simplicidade
@@ -143,15 +106,17 @@ Mesmo usuários iniciantes devem conseguir utilizar o programa sem necessidade d
 
 ## Performance
 
-O próprio Real Optimizer deve consumir poucos recursos do computador.
+O próprio UeX deve consumir poucos recursos do computador.
 
 ---
 
-# 8. Diferenciais
+# 6. Diferenciais
 
 ## Health Score
 
 Pontuação que representa a saúde geral do sistema.
+
+*Estado atual:* implementado no Painel como uma pontuação única, reduzida pelos alertas encontrados na análise.
 
 ---
 
@@ -159,11 +124,15 @@ Pontuação que representa a saúde geral do sistema.
 
 Antes de executar qualquer alteração o software monta um plano completo das ações recomendadas.
 
+*Estado atual:* parcial. A análise do Painel gera alertas ordenados por gravidade, cada um com atalho para a página certa (Limpeza ou Serviços), e toda alteração passa por uma confirmação que lista o que será feito.
+
 ---
 
 ## Confidence Score
 
 Cada recomendação possui um nível de confiança indicando o quanto aquela otimização é indicada para aquele computador.
+
+*Estado atual:* ainda não implementado.
 
 ---
 
@@ -181,6 +150,8 @@ Pode alterar o comportamento do sistema.
 
 Recomendado apenas para usuários experientes.
 
+*Estado atual:* a interface usa **Seguro** e **Atenção**. O nível **Avançado** está previsto, mas nenhuma função da V1 precisa dele.
+
 ---
 
 ## Explicações detalhadas
@@ -195,7 +166,7 @@ Interface minimalista inspirada em aplicações modernas do Windows.
 
 ---
 
-# 9. Princípios de UX
+# 7. Princípios de UX
 
 O usuário deve entender o estado do computador nos primeiros cinco segundos após abrir o software.
 
@@ -207,29 +178,31 @@ Nenhuma informação importante deve ficar escondida.
 
 ---
 
-# 10. Objetivos da versão 1.0
+# 8. Objetivos da versão 1.0
 
-Dashboard
+Painel (Dashboard)
 
 Health Score
 
-Cleaner
+Limpeza (Cleaner)
 
-Startup Manager
+Serviços
 
-Hardware Information
+Inicialização (Startup Manager)
 
-Settings
+Informações de hardware
+
+Configurações
 
 Logs
 
-Dark Mode
+Modo escuro e modo claro
 
-Light Mode
+O andamento de cada item está no [Roadmap](07-Roadmap.md) e na [V1 Specification](V1_Specification.md).
 
 ---
 
-# 11. O que NÃO faz parte da versão 1.0
+# 9. O que NÃO faz parte da versão 1.0
 
 Driver Updater
 
@@ -245,20 +218,20 @@ Sincronização em nuvem
 
 ---
 
-# 12. Nosso lema
+# 10. Nosso lema
 
-"O Real Optimizer não toma decisões pelo usuário.
+"O UeX não toma decisões pelo usuário.
 
 Ele analisa, explica, recomenda e executa apenas aquilo que o usuário entende e aprova."
 
 ---
 
-📌 13. Product Principles (Princípios do Produto)
+# 11. Product Principles (Princípios do Produto)
 
-Esses princípios servem como regras para qualquer funcionalidade nova. Antes de implementá-la, vamos verificar se ela respeita estes pontos:
+Esses princípios servem como regras para qualquer funcionalidade nova. Antes de implementá-la, verificamos se ela respeita estes pontos:
 
-1-Toda funcionalidade deve resolver um problema real. Não adicionaremos recursos apenas para aumentar a lista de funcionalidades.
-2-Explicar antes de executar. O usuário deve entender o impacto de qualquer alteração importante.
-3-Segurança acima de desempenho. Nunca sacrificaremos a estabilidade do Windows por um ganho mínimo de performance.
-4-Desempenho do próprio software importa. O Real Optimizer deve iniciar rapidamente e consumir poucos recursos.
-5-Consistência visual. Toda nova tela deve seguir o mesmo Design System, sem exceções.
+1. **Toda funcionalidade deve resolver um problema real.** Não adicionaremos recursos apenas para aumentar a lista de funcionalidades.
+2. **Explicar antes de executar.** O usuário deve entender o impacto de qualquer alteração importante.
+3. **Segurança acima de desempenho.** Nunca sacrificaremos a estabilidade do Windows por um ganho mínimo de performance.
+4. **Desempenho do próprio software importa.** O UeX deve iniciar rapidamente e consumir poucos recursos.
+5. **Consistência visual.** Toda nova tela deve seguir o mesmo Design System, sem exceções.

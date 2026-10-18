@@ -1,12 +1,12 @@
 # Brand Guide
 
-| Projeto | Real Optimizer |
+| Projeto | UltraEdgeX (UeX) |
 |----------|----------------|
 | Documento | Brand Guide |
-| Versão | 1.0 |
+| Versão | 1.1 |
 | Status | Draft |
 | Autor | Junior |
-| Última atualização | Julho/2026 |
+| Última atualização | Outubro/2026 |
 
 ---
 
@@ -29,7 +29,7 @@
 
 # 1. Identidade
 
-O Real Optimizer transmite tecnologia, confiança, desempenho e simplicidade.
+O UltraEdgeX transmite tecnologia, confiança, desempenho e simplicidade.
 
 O design deve parecer moderno sem exageros, priorizando clareza e organização.
 
@@ -37,15 +37,23 @@ O design deve parecer moderno sem exageros, priorizando clareza e organização.
 
 # 2. Nome
 
-Nome atual:
+Nome oficial:
 
-Real Optimizer
+**UltraEdgeX**
 
-Status:
+Abreviação na interface:
 
-Provisório
+**UeX**
 
-O nome poderá ser alterado antes da primeira versão pública.
+Uso:
+
+• O nome completo, UltraEdgeX, aparece na barra de título da janela e em telas institucionais.
+
+• Na interface do dia a dia aparece **UeX**.
+
+Histórico:
+
+"Real Optimizer" foi o nome provisório do projeto e continua só em nomes técnicos do código (namespace `real_optimizer` e a camada ROUI). Decisão registrada em DEC-012.
 
 ---
 
@@ -71,7 +79,9 @@ A interface deve transmitir:
 
 Arquivo:
 
-![texto alternativo](assets/logo.png)
+![Logo do UltraEdgeX](../assets/logo.png)
+
+O ícone do aplicativo fica em `assets/app.ico`.
 
 Regras:
 
@@ -87,13 +97,11 @@ Regras:
 
 # 5. Paleta de Cores
 
-Arquivo de referência:
-
-![texto alternativo](assets/paleta%20de%20cores.png)
+A fonte única dos valores é o tema do app (`roui/core/Theme.cpp`). A tabela completa, com todos os tokens, está no [UI Design System](05-UIDesignSystem.md).
 
 ### Cor Primária
 
-(Definiremos oficialmente após os testes)
+Roxo `#AC00FF` (DEC-011).
 
 Uso:
 
@@ -103,19 +111,27 @@ Links.
 
 Elementos ativos.
 
+Barras e anel de progresso.
+
+No tema escuro, textos em destaque usam `#C766FF`, para manter o contraste.
+
 ---
 
 ### Cor Secundária
 
+Fundo suave da cor primária (`#1F1030` no escuro, `#F1E3FF` no claro).
+
 Uso:
 
-Cards ativos.
+Item escolhido em menus.
 
 Indicadores.
 
 ---
 
 ### Fundo Principal
+
+Escuro `#0A0C0D` · Claro `#F4F7F8`
 
 Uso:
 
@@ -124,6 +140,8 @@ Background da aplicação.
 ---
 
 ### Fundo Secundário
+
+Escuro `#101517` (cards) e `#0D1012` (sidebar) · Claro `#FFFFFF`
 
 Uso:
 
@@ -137,6 +155,8 @@ Menus.
 
 ### Texto Primário
 
+Escuro `#E6EAEC` · Claro `#14181A`
+
 Uso:
 
 Títulos.
@@ -146,6 +166,8 @@ Informações importantes.
 ---
 
 ### Texto Secundário
+
+Escuro `#9AA6AB` · Claro `#5B676C`
 
 Uso:
 
@@ -157,13 +179,17 @@ Informações auxiliares.
 
 ### Verde
 
-Sucesso.
+Escuro `#4ADE80` · Claro `#15803D`
+
+Sucesso e nível **Seguro**.
 
 ---
 
 ### Amarelo
 
-Atenção.
+Escuro `#FBBF24` · Claro `#A16207`
+
+Atenção e nível **Atenção**.
 
 ---
 
@@ -171,35 +197,43 @@ Atenção.
 
 Erro.
 
+Ainda não há um token de vermelho no tema, porque nenhuma tela mostra estado de erro com cor própria. Será definido junto com a primeira tela que precisar.
+
 ---
 
 ### Azul
 
 Informação.
 
+Ainda sem token no tema, pelo mesmo motivo.
+
 ---
 
 # 6. Tipografia
 
-Fonte oficial:
+Fonte oficial prevista:
 
 Inter
 
-Pesos utilizados:
+Fonte em uso hoje:
 
-Light
+**Segoe UI**, a fonte do Windows. A troca para a Inter ainda não foi feita: ela exige embutir a fonte no app e carregá-la no DirectWrite. Até lá, o guia vale como destino e o app usa a Segoe UI.
+
+Pesos utilizados no app:
 
 Regular
-
-Medium
 
 SemiBold
 
 Bold
 
+Light e Medium não são usados.
+
 Regras:
 
-Nunca utilizar mais de dois pesos na mesma tela.
+Títulos de página usam Bold; títulos de itens, valores e botões usam SemiBold; descrições usam Regular.
+
+Não usar outros pesos além desses três.
 
 ---
 
@@ -216,6 +250,8 @@ Consistente
 Sem excesso de detalhes.
 
 Todos os ícones devem seguir o mesmo conjunto visual.
+
+Hoje a interface quase não usa ícones: os itens da barra lateral são só texto, e as marcas (check, seta) são desenhadas por linhas simples.
 
 ---
 
@@ -249,21 +285,17 @@ Botões
 
 Cards
 
-Inputs
+Interruptores
 
-Checkboxes
+Progress Bars e anel
 
-Progress Bars
+Badges (Seguro / Atenção)
 
-Badges
+Menus (escolha de disco)
 
-Tooltips
+Dialogs (confirmação)
 
-Dropdowns
-
-Dialogs
-
-Esses componentes serão definidos posteriormente no UI Design System.
+Os componentes existentes e as regras de cada um estão no [UI Design System](05-UIDesignSystem.md). Inputs de texto e tooltips ainda não existem.
 
 ---
 
@@ -295,7 +327,7 @@ O software deve parecer profissional.
 
 # 12. Tom do Produto
 
-O Real Optimizer deve conversar com o usuário de forma clara.
+O UeX deve conversar com o usuário de forma clara.
 
 Exemplo:
 
@@ -312,3 +344,5 @@ Verifique se você possui permissões de administrador.
 ---
 
 Toda mensagem deverá ser escrita em linguagem simples.
+
+Também vale para promessas: o UeX descreve o que o app faz e nunca promete ganho de desempenho que não possa medir.

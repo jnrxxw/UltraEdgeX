@@ -1,7 +1,9 @@
 #include "system/SystemAnalyzer.h"
 
 #include "system/SystemInfo.h"
-#include "system/TemporaryFilesScanner.h"
+#include "core/ByteFormat.h"
+#include "system/Cleaner.h"
+#include "system/Services.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -22,8 +24,23 @@ namespace real_optimizer::system
         const CpuInfo cpu =
             SystemInfo::GetCpuInfo();
 
-        const TemporaryFilesInfo temporaryFiles =
-            TemporaryFilesScanner::Scan();
+        // Mesmo critério da página Limpeza: soma as categorias
+        // que ela já deixa marcadas (nível Seguro).
+        std::uint64_t cleanableBytes = 0;
+        bool cleanablePartial = false;
+
+        for (const CleanCategory &category : Cleaner::Categories())
+        {
+            if (
+                category.safety == SafetyLevel::Safe &&
+                category.selectedByDefault)
+            {
+                const ScanResult scan = Cleaner::Scan(category);
+
+                cleanableBytes += scan.bytes;
+                cleanablePartial = cleanablePartial || scan.partial;
+            }
+        }
 
         //
         // MEMÓRIA
@@ -103,18 +120,42 @@ namespace real_optimizer::system
         constexpr std::uint64_t TemporaryFilesThreshold =
             100ULL * Megabyte;
 
-        if (
-            temporaryFiles.valid &&
-            temporaryFiles.totalBytes >= TemporaryFilesThreshold)
+        if (cleanableBytes >= TemporaryFilesThreshold)
         {
-            const std::uint64_t sizeMb =
-                temporaryFiles.totalBytes / Megabyte;
-
             result.issues.push_back({L"Arquivos temporários",
-                                     std::to_wstring(sizeMb) +
-                                         L" MB de arquivos temporários encontrados.",
+                                     std::wstring(cleanablePartial
+                                                      ? L"Pelo menos "
+                                                      : L"") +
+                                         core::FormatBytes(cleanableBytes) +
+                                         (cleanablePartial
+                                              ? L" para remover."
+                                              : L" podem ser removidos."),
                                      IssueSeverity::Warning,
-                                     5});
+                                     5,
+                                     IssueAction::OpenCleaner});
+        }
+
+        //
+        // SERVIÇOS DESNECESSÁRIOS
+        //
+        // Só conta serviços de nível Seguro (mesmo critério do botão
+        // "Marcar recomendados"). Não promete ganho de desempenho:
+        // o efeito de desativar serviços é pequeno.
+        //
+
+        const std::size_t unnecessaryServices =
+            Services::CountRecommendedToDisable();
+
+        if (unnecessaryServices > 0)
+        {
+            result.issues.push_back({unnecessaryServices == 1
+                                         ? L"1 serviço desnecessário"
+                                         : std::to_wstring(unnecessaryServices) +
+                                               L" serviços desnecessários",
+                                     L"Podem ser desativados com segurança.",
+                                     IssueSeverity::Info,
+                                     3,
+                                     IssueAction::OpenServices});
         }
 
         //
@@ -126,6 +167,21 @@ namespace real_optimizer::system
             result.healthScore -=
                 issue.scorePenalty;
         }
+
+        // Os mais graves primeiro: o Painel mostra só os primeiros.
+        std::stable_sort(
+            result.issues.begin(),
+            result.issues.end(),
+            [](const AnalysisIssue &a, const AnalysisIssue &b)
+            {
+                if (a.severity != b.severity)
+                {
+                    return static_cast<int>(a.severity) >
+                           static_cast<int>(b.severity);
+                }
+
+                return a.scorePenalty > b.scorePenalty;
+            });
 
         result.healthScore =
             std::clamp(
